@@ -31,6 +31,15 @@ library
     -- other-extensions:
     build-depends:    base ^>=4.16
                     , text
+    ghc-options: -Wall
+                 -Wcompat
+                 -Wincomplete-record-updates
+                 -Wincomplete-uni-patterns
+                 -Wredundant-constraints
+                 -Wredundant-record-wildcards
+                 -Wunused-record-wildcards
+                 -fshow-hole-constraints
+                 -haddock
     hs-source-dirs:   src
     default-language: Haskell2010
 

@@ -28,7 +28,7 @@ data Primop
   | Gt
   | Geq
   | Rangechk
-  | Not
+  | Bang -- !
   | Subscript
   | Ordof
   | Assign
