@@ -7,8 +7,9 @@ module Miniml.Semantics where
 
 import Control.Exception (Exception, throw)
 import Data.Char (ord)
-import qualified Data.Text as T
-import qualified Miniml.Cps as Cps
+import Data.Text qualified as T
+import Miniml.Cps qualified as Cps
+import Miniml.Shared qualified as Cps
 
 data Undefined = Undefined deriving (Show)
 
@@ -84,13 +85,13 @@ eq _ (Int i) = arbitrarily ?args (False, i < 0 || i > 255)
 eq _ _ = False
 
 doRaise ::
-  (?args :: SemanticsArgs loc answer1) =>
-  DValue loc answer2 ->
-  Store loc answer2 ->
-  answer2
+  (?args :: SemanticsArgs loc answer) =>
+  DValue loc answer ->
+  Store loc answer ->
+  answer
 doRaise exn s = case fetch s (handlerRef ?args) of
   Func f -> f [exn] s
-  _ -> error "fetching the handler should return Func"
+  _ -> error "doRaise: fetching the handler should return Func"
 
 overflow ::
   (?args :: SemanticsArgs loc answer) =>
@@ -140,12 +141,12 @@ evalPath (Record l i) (Cps.Selp j p) = evalPath (l !! (i + j)) p
 evalPath _ _ = error "evalPath: invalid pattern"
 
 evalPrim ::
-  (Num loc, Eq loc, ?args :: SemanticsArgs loc answer1) =>
+  (Num loc, Eq loc, ?args :: SemanticsArgs loc answer) =>
   Cps.Primop ->
-  [DValue loc answer1] ->
-  [[DValue loc answer1] -> Store loc answer1 -> answer1] ->
-  Store loc answer1 ->
-  answer1
+  [DValue loc answer] ->
+  [[DValue loc answer] -> Store loc answer -> answer] ->
+  Store loc answer ->
+  answer
 evalPrim Cps.Plus [Int i, Int j] [c] = overflow (i + j) c
 evalPrim Cps.Minus [Int i, Int j] [c] = overflow (i - j) c
 evalPrim Cps.Times [Int i, Int j] [c] = overflow (i * j) c
@@ -213,7 +214,7 @@ evalPrim Cps.Flt [Real i, Real j] [t, f] = if i < j then t [] else f []
 evalPrim Cps.Fle [Real i, Real j] [t, f] = if j < i then f [] else t []
 evalPrim Cps.Fgt [Real i, Real j] [t, f] = if j < i then t [] else f []
 evalPrim Cps.Fge [Real i, Real j] [t, f] = if i < j then f [] else t []
-evalPrim _ _ _ = undefined
+evalPrim p _ _ = error $ "evalPrim: invalid pattern " ++ show p
 
 denotExpr ::
   (?args :: SemanticsArgs loc answer, Num loc, Eq loc) =>
@@ -242,7 +243,7 @@ denotExpr env (Cps.Fix fl e) = denotExpr (g env) e
   where
     h r1 (_, vl, b) = Func $ \al -> denotExpr (bindn (g r1) vl al) b
     g r = bindn r (fmap (\(n, _, _) -> n) fl) (fmap (h r) fl)
-denotExpr _ _ = error "denotExpr: invalid pattern"
+denotExpr _ p = error $ "denotExpr: invalid pattern" ++ show p
 
 type Eval loc answer =
   ([Cps.Var], Cps.Cexp) -> [DValue loc answer] -> Store loc answer -> answer
