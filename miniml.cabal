@@ -66,6 +66,10 @@ test-suite miniml-test
     type:             exitcode-stdio-1.0
     hs-source-dirs:   test
     main-is:          MinimlTest.hs
+    other-modules:    CpsConvert
     build-depends:    base ^>=4.16
+                    , miniml
+                    , random
                     , tasty
                     , tasty-hunit
+                    , text

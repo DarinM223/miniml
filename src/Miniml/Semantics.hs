@@ -42,18 +42,18 @@ fetch :: Store loc answer -> loc -> DValue loc answer
 fetch (_, f, _) l = f l
 
 upd ::
-  (Num loc, Eq loc) =>
+  Eq loc =>
   Store loc answer ->
   loc ->
   DValue loc answer ->
   Store loc answer
-upd (n, f, g) _ v = (n, \i -> if i == 1 then v else f i, g)
+upd (n, f, g) l v = (n, \i -> if i == l then v else f i, g)
 
 fetchi :: Store loc answer -> loc -> Int
 fetchi (_, _, g) l = g l
 
-updi :: (Num loc, Eq loc) => Store loc answer -> loc -> Int -> Store loc answer
-updi (n, f, g) _ v = (n, f, \i -> if i == 1 then v else g i)
+updi :: Eq loc => Store loc answer -> loc -> Int -> Store loc answer
+updi (n, f, g) l v = (n, f, \i -> if i == l then v else g i)
 
 eqlist ::
   (?args :: SemanticsArgs loc answer, Eq loc) =>
@@ -244,10 +244,14 @@ denotExpr env (Cps.Fix fl e) = denotExpr (g env) e
 denotExpr _ p = error $ "denotExpr: invalid pattern" ++ show p
 
 type Eval loc answer =
-  ([Cps.Var], Cps.Cexp) -> [DValue loc answer] -> Store loc answer -> answer
+  [Cps.Var] -> [DValue loc answer] -> Cps.Cexp -> Store loc answer -> answer
 
 env0 :: Env loc answer
 env0 = \_ -> throw Undefined
 
 cpsSemantics :: (?args :: SemanticsArgs loc answer, Num loc, Eq loc) => Eval loc answer
-cpsSemantics (vl, e) dl = denotExpr (bindn env0 vl dl) e
+cpsSemantics vl dl = denotExpr (bindn env0 vl dl)
+
+withArgs ::
+  SemanticsArgs loc answer -> ((?args :: SemanticsArgs loc answer) => a) -> a
+withArgs args f = let ?args = args in f
