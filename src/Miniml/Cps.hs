@@ -1,16 +1,14 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections #-}
-
 module Miniml.Cps where
 
+import Control.Applicative (liftA2, liftA3)
+import Control.Monad (replicateM)
 import Control.Monad.Cont (ContT (ContT, runContT))
-import Control.Monad.State.Strict (State)
+import Control.Monad.State.Strict (MonadState, State, runState)
 import Data.Char (ord)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Miniml.Lambda qualified as L
-import Miniml.Shared (Access (..), Primop, fresh)
+import Miniml.Shared (Access (..), Primop (Callcc, Gethdlr, Sethdlr, Throw), fresh)
 
 type Var = Int
 
@@ -47,12 +45,22 @@ primopArgs i e go = case primopNumArgs i of
     L.Record a -> traverse go a
     _ -> error $ "Multi argument primop " ++ show i ++ " expecting record argument"
 
-convert :: L.Lexp -> State Int (Var, Cexp)
+newtype ConvertM a = ConvertM (State Int a)
+  deriving (Functor, Applicative, Monad, MonadState Int)
+
+runConvertM :: ConvertM a -> Int -> (a, Int)
+runConvertM (ConvertM m) = runState m
+
+instance MonadFail ConvertM where
+  fail :: String -> ConvertM a
+  fail = error
+
+convert :: L.Lexp -> ConvertM (Var, Cexp)
 convert lexp = do
   k <- fresh
   fmap (k,) $ runContT (go lexp) $ \v -> pure $ App (Var k) [v]
   where
-    go :: L.Lexp -> ContT Cexp (State Int) Value
+    go :: L.Lexp -> ContT Cexp ConvertM Value
     go (L.Var v) = pure $ Var v
     go (L.Real r) = pure $ Real r
     go (L.Int i) = pure $ Int i
@@ -71,6 +79,16 @@ convert lexp = do
     go (L.Prim i) = do
       x <- fresh
       go $ L.Fn x $ L.App (L.Prim i) (L.Var x)
+    go (L.App (L.Prim Callcc) f) = ContT $ \c -> do
+      [k, k', x, x', h] <- replicateM 5 fresh
+      kf <- (k,[x],) <$> c (Var x)
+      let kf' = (k', [x'], Primop Sethdlr [Var h] [] [App (Var k) [Var x']])
+      Primop Gethdlr [] [h] . (: []) . Fix [kf, kf']
+        <$> runContT (go f) (\v -> pure $ App v [Var k', Var k])
+    go (L.App (L.Prim Throw) e) = do
+      k <- go e
+      (f, x, j) <- liftA3 (,,) fresh fresh fresh
+      ContT $ \c -> Fix [(f, [x, j], App k [Var x])] <$> c (Var f)
     go (L.App (L.Prim i) e) = case primopResultType i of
       OneResult -> do
         a <- primopArgs i e go
@@ -81,22 +99,18 @@ convert lexp = do
         ContT $ \c -> Primop i a [] . (: []) <$> c (Int 0)
       Branching -> do
         a <- primopArgs i e go
-        w <- fresh
-        k <- fresh
-        x <- fresh
+        (w, k, x) <- liftA3 (,,) fresh fresh fresh
         ContT $ \c -> do
           kf <- (k,[x],) <$> c (Var x)
           pure $ Fix [kf] (Primop i a [w] [App (Var k) [Int 0], App (Var k) [Int 1]])
     go (L.Fn v e) = do
       z <- go e
-      f <- fresh
-      k <- fresh
+      (f, k) <- liftA2 (,) fresh fresh
       ContT $ \c -> Fix [(f, [v, k], App (Var k) [z])] <$> c (Var f)
     go (L.App f e) = do
       f' <- go f
       e' <- go e
-      r <- fresh
-      x <- fresh
+      (r, x) <- liftA2 (,) fresh fresh
       ContT $ \c -> do
         rf <- (r,[x],) <$> c (Var x)
         pure $ Fix [rf] (App f' [e', Var r])
@@ -116,12 +130,43 @@ convert lexp = do
       x <- fresh
       ContT $ \c -> Record [(w, Offp 0), (Var v, p)] x <$> c (Var x)
     go (L.Con (L.VariableC v p) _) = do
-      w <- fresh
-      x <- fresh
+      (w, x) <- liftA2 (,) fresh fresh
       ContT $ \c -> Record [(Var v, p)] w . Select 0 (Var w) x <$> c (Var x)
+    go (L.Con L.Undecided _) = error "Con cannot be applied to Undecided"
+    go (L.Con L.Ref _) = error "Con cannot be applied to Ref"
     go (L.Decon (L.Tagged _) e) = go $ L.Select 0 e
     go (L.Decon L.Transparent e) = go e
     go (L.Decon L.TransB e) = go e
     go (L.Decon L.TransU e) = go e
     go (L.Decon (L.Variable _ _) e) = go $ L.Select 0 e
-    go _ = undefined
+    go (L.Decon L.Undecided _) = error "Decon cannot be applied to Undecided"
+    go (L.Decon (L.VariableC v p) _) =
+      error $ "Decon cannot be applied to VariableC: " ++ show v ++ ", " ++ show p
+    go (L.Decon L.Ref _) = error "Decon cannot be applied to Ref"
+    go (L.Decon (L.Constant i) _) =
+      error $ "Decon cannot be applied to Constant " ++ show i
+    go (L.Switch e l [a@(L.DataCon (L.Constant 0), _), b@(L.DataCon (L.Constant 1), _)] Nothing) =
+      go (L.Switch e l [b, a] Nothing)
+    go (L.Switch u _ l _) = do
+      u' <- go u
+      (k, x) <- liftA2 (,) fresh fresh
+      let g (_, le) = runContT (go le) (\z -> pure (App (Var k) [z]))
+      ContT $ \c -> do
+        kf <- (k,[x],) <$> c (Var x)
+        Fix [kf] . Switch u' <$> traverse g l
+    go (L.Handle a b) = ContT $ \c -> do
+      [h, k, n, x, e] <- replicateM 5 fresh
+      kf <- (k,[x],) <$> c (Var x)
+      nf <-
+        (n,[e],) . Primop Sethdlr [Var h] [] . (: [])
+          <$> runContT (go b) (pure . flip App [Var e, Var k])
+      (Primop Gethdlr [] [h] . (: []))
+        . Fix [kf, nf]
+        . (Primop Sethdlr [Var n] [] . (: []))
+        <$> runContT
+          (go a)
+          (\v -> pure $ Primop Sethdlr [Var h] [] [App (Var k) [v]])
+    go (L.Raise e) = do
+      e' <- go e
+      h <- fresh
+      ContT $ \_ -> pure $ Primop Gethdlr [] [h] [App (Var h) [e']]

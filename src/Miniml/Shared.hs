@@ -49,6 +49,8 @@ data Primop
   | Andb
   | Xorb
   | Notb
+  | Callcc
+  | Throw
   deriving (Show)
 
 fresh :: MonadState Int m => m Int

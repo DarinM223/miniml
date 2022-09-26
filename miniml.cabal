@@ -24,6 +24,7 @@ library
                     , Miniml.Cps
                     , Miniml.Lambda
                     , Miniml.Semantics
+                    , Miniml.Shared
 
     -- Modules included in this library but not exported.
     -- other-modules:
