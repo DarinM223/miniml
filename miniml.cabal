@@ -23,6 +23,8 @@ library
     exposed-modules:  Miniml
                     , Miniml.Cps
                     , Miniml.Lambda
+                    , Miniml.Optimization.CataExample
+                    , Miniml.Optimization.Contract
                     , Miniml.Semantics
                     , Miniml.Shared
 
@@ -33,6 +35,7 @@ library
     -- other-extensions:
     build-depends:    base ^>=4.16
                     , mtl
+                    , recursion-schemes
                     , text
     ghc-options: -Wall
                  -Wcompat
@@ -73,3 +76,4 @@ test-suite miniml-test
                     , tasty
                     , tasty-hunit
                     , text
+                    , transformers

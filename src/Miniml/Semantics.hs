@@ -39,7 +39,7 @@ data DValue loc answer
   | Uarray [loc]
 
 fetch :: Store loc answer -> loc -> DValue loc answer
-fetch (_, f, _) l = f l
+fetch (_, f, _) = f
 
 upd ::
   Eq loc =>
@@ -50,7 +50,7 @@ upd ::
 upd (n, f, g) l v = (n, \i -> if i == l then v else f i, g)
 
 fetchi :: Store loc answer -> loc -> Int
-fetchi (_, _, g) l = g l
+fetchi (_, _, g) = g
 
 updi :: Eq loc => Store loc answer -> loc -> Int -> Store loc answer
 updi (n, f, g) l v = (n, f, \i -> if i == l then v else g i)
@@ -60,7 +60,7 @@ eqlist ::
   [DValue loc answer] ->
   [DValue loc answer] ->
   Bool
-eqlist l1 l2 = all (\(a, b) -> eq a b) (zip l1 l2)
+eqlist l1 l2 = all (uncurry eq) (zip l1 l2)
 
 eq ::
   (?args :: SemanticsArgs loc answer, Eq loc) =>
@@ -125,7 +125,7 @@ convertValue env (Cps.Var v) = env v
 convertValue env (Cps.Label v) = env v
 
 bind :: Eq t => (t -> p) -> t -> p -> t -> p
-bind env v d = \w -> if v == w then d else env w
+bind env v d w = if v == w then d else env w
 
 bindn :: Eq t => (t -> p) -> [t] -> [p] -> t -> p
 bindn env (v : vl) (d : dl) = bindn (bind env v d) vl dl
@@ -150,7 +150,7 @@ evalPrim Cps.Minus [Int i, Int j] [c] = overflow (i - j) c
 evalPrim Cps.Times [Int i, Int j] [c] = overflow (i * j) c
 evalPrim Cps.Div [Int _, Int 0] _ = doRaise $ divExn ?args
 evalPrim Cps.Div [Int i, Int j] [c] = overflow (i `quot` j) c
-evalPrim Cps.Minus [Int i] [c] = overflow (0 - i) c
+evalPrim Cps.Minus [Int i] [c] = overflow (negate i) c
 evalPrim Cps.Lt [Int i, Int j] [t, f] = if i < j then t [] else f []
 evalPrim Cps.Leq [Int i, Int j] [t, f] = if j < i then f [] else t []
 evalPrim Cps.Gt [Int i, Int j] [t, f] = if j < i then t [] else f []
@@ -236,7 +236,7 @@ denotExpr env (Cps.Primop p vl wl el) =
   evalPrim
     p
     (fmap (convertValue env) vl)
-    (fmap (\e -> \al -> denotExpr (bindn env wl al) e) el)
+    (fmap (\e al -> denotExpr (bindn env wl al) e) el)
 denotExpr env (Cps.Fix fl e) = denotExpr (g env) e
   where
     h r1 (_, vl, b) = Func $ \al -> denotExpr (bindn (g r1) vl al) b
@@ -247,7 +247,7 @@ type Eval loc answer =
   [Cps.Var] -> [DValue loc answer] -> Cps.Cexp -> Store loc answer -> answer
 
 env0 :: Env loc answer
-env0 = \_ -> throw Undefined
+env0 _ = throw Undefined
 
 cpsSemantics :: (?args :: SemanticsArgs loc answer, Num loc, Eq loc) => Eval loc answer
 cpsSemantics vl dl = denotExpr (bindn env0 vl dl)

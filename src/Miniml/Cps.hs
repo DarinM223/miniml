@@ -1,10 +1,14 @@
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
+
 module Miniml.Cps where
 
 import Control.Applicative (liftA2, liftA3)
 import Control.Monad (replicateM)
 import Control.Monad.Cont (ContT (ContT, runContT))
-import Control.Monad.State.Strict (MonadState, State, runState)
+import Control.Monad.State.Strict (MonadState, State)
 import Data.Char (ord)
+import Data.Functor.Foldable.TH (makeBaseFunctor)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Miniml.Lambda qualified as L
@@ -30,6 +34,8 @@ data Cexp
   | Primop Primop [Value] [Var] [Cexp]
   deriving (Show)
 
+makeBaseFunctor ''Cexp
+
 data PrimopResult = OneResult | NoResult | Branching
 
 primopResultType :: Primop -> PrimopResult
@@ -45,18 +51,15 @@ primopArgs i e go = case primopNumArgs i of
     L.Record a -> traverse go a
     _ -> error $ "Multi argument primop " ++ show i ++ " expecting record argument"
 
-newtype ConvertM a = ConvertM (State Int a)
+newtype ConvertM a = ConvertM {unConvertM :: State Int a}
   deriving (Functor, Applicative, Monad, MonadState Int)
-
-runConvertM :: ConvertM a -> Int -> (a, Int)
-runConvertM (ConvertM m) = runState m
 
 instance MonadFail ConvertM where
   fail :: String -> ConvertM a
   fail = error
 
-convert :: L.Lexp -> ConvertM (Var, Cexp)
-convert lexp = do
+convert :: L.Lexp -> State Int (Var, Cexp)
+convert lexp = unConvertM $ do
   k <- fresh
   fmap (k,) $ runContT (go lexp) $ \v -> pure $ App (Var k) [v]
   where

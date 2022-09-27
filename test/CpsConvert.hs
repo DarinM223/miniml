@@ -1,6 +1,7 @@
 module CpsConvert (tests) where
 
 import Control.Exception (throw)
+import Control.Monad.Trans.State.Strict (runState)
 import Data.Text qualified as T
 import Miniml.Cps qualified as Cps
 import Miniml.Lambda qualified as Lambda
@@ -42,7 +43,7 @@ args =
 testVar :: IO ()
 testVar = withArgs args $ do
   let e = 0
-      ((k, e'), _) = Cps.runConvertM (Cps.convert (Lambda.Var e)) 0
+      ((k, e'), _) = runState (Cps.convert (Lambda.Var e)) 0
       func ((Int i) : _) store = i
       semantics = cpsSemantics [e, k] [Int 420, Func func] e'
       result = semantics (0, \_ -> throw Undefined, \_ -> throw Undefined)
