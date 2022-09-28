@@ -34,7 +34,9 @@ library
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
     build-depends:    base ^>=4.16
+                    , containers
                     , mtl
+                    , optics
                     , recursion-schemes
                     , text
     ghc-options: -Wall
