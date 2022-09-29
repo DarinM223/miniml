@@ -2,11 +2,11 @@
 
 module Miniml.Optimization.Contract where
 
-import Control.Monad.State.Strict (State, execState, modify')
+import Control.Monad.State.Strict (State, execState, gets, modify')
 import Data.Foldable (for_, traverse_)
 import Data.IntMap qualified as IM
 import GHC.Generics (Generic)
-import Miniml.Cps (Cexp (..), Value (Var), Var)
+import Miniml.Cps (Cexp (..), Value (Label, Var), Var)
 import Miniml.Shared (Access, Primop)
 import Optics (at', (%), _Just)
 import Optics.State.Operators ((%=))
@@ -38,7 +38,8 @@ data FunctionInfo' = FunctionInfo'
     body :: Cexp,
     -- | Whether any of the actual parameters are records,
     -- and the size of those records
-    arity :: {-# UNPACK #-} !Int
+    arity :: {-# UNPACK #-} !Int,
+    calls :: {-# UNPACK #-} !Int
   }
   deriving (Generic)
 
@@ -54,55 +55,75 @@ data ArithPrimInfo' = ArithPrimInfo'
   }
   deriving (Generic)
 
+-- ~, +, -, *, div, fadd, fsub, fmul, fdiv
 arithPrimopInfo :: Primop -> (Bool, Int, Int)
 arithPrimopInfo = undefined
+
+use :: Value -> State ContractInfo ()
+use (Var v) = at' v % _Just % #used %= (+ 1)
+use (Label v) = use (Var v)
+use _ = pure ()
+
+escape :: Value -> State ContractInfo ()
+escape (Var v) = use (Var v) >> at' v % _Just % #escapes %= (+ 1)
+escape (Label v) = escape (Var v)
+escape _ = pure ()
+
+call :: Value -> State ContractInfo ()
+call (Var v) = do
+  use (Var v)
+  at' v % _Just % #specific % #_FunctionInfo % #calls %= (+ 1)
+call (Label v) = call (Var v)
+call _ = pure ()
+
+enter :: Int -> SpecificInfo -> State ContractInfo ()
+enter v specific = modify' $ IM.insert v $ Info specific 0 0
+
+enterSimple :: Int -> State ContractInfo ()
+enterSimple v = enter v NoSpecificInfo
 
 gatherInfo :: Cexp -> ContractInfo
 gatherInfo = flip execState IM.empty . go
   where
-    recordUse :: Value -> State ContractInfo ()
-    recordUse (Var v) = at' v % _Just % #used %= (+ 1)
-    recordUse _ = pure ()
-
-    recordEscape :: Value -> State ContractInfo ()
-    recordEscape (Var v) = do
-      recordUse (Var v)
-      at' v % _Just % #escapes %= (+ 1)
-    recordEscape _ = pure ()
-
-    addGenericVar :: Var -> State ContractInfo ()
-    addGenericVar v = modify' $ IM.insert v $ Info NoSpecificInfo 0 0
-
     go :: Cexp -> State ContractInfo ()
     go (Fix fns rest) = do
       for_ fns $ \(fn, params, e) -> do
-        for_ params $ \param ->
-          modify' $ IM.insert param $ Info (FormalParamInfo 0) 0 0
-        modify' $
-          IM.insert fn $
-            Info (FunctionInfo (FunctionInfo' params e 0)) 0 0
+        traverse_ (`enter` FormalParamInfo 0) params
+        enter fn $ FunctionInfo $ FunctionInfo' params e 0 0
       go rest
     go (Record fields v rest) = do
-      traverse_ (recordEscape . fst) fields
-      modify' $ IM.insert v $ Info (RecordInfo fields) 0 0
+      traverse_ (escape . fst) fields
+      enter v $ RecordInfo fields
       go rest
-    go (Offset _ p v rest) = recordUse p >> addGenericVar v >> go rest
-    go (App f vs) = do
-      recordUse f
-      traverse_ recordEscape vs
+    go (Offset _ p v rest) = use p >> enterSimple v >> go rest
+    go (App f vs) = call f >> traverse_ escape vs
     go (Select off (Var r) v rest) = do
-      recordUse (Var r)
+      use (Var r)
       -- Record highest select offset across all paths
       at' r % _Just % #specific % #_FormalParamInfo %= max off
-      modify' $ IM.insert v $ Info (SelectInfo (SelectInfo' r off)) 0 0
+      enter v $ SelectInfo $ SelectInfo' r off
       go rest
     go Select {} = error "Must select off of record variable"
-    go (Switch p branches) = recordUse p >> traverse_ go branches
+    go (Switch p branches) = use p >> traverse_ go branches
     go (Primop op ps [v] rest) | (True, lower, upper) <- arithPrimopInfo op = do
-      traverse_ recordUse ps
-      modify' $
-        IM.insert v $
-          Info (ArithPrimInfo (ArithPrimInfo' lower upper)) 0 0
+      traverse_ use ps
+      enter v $ ArithPrimInfo $ ArithPrimInfo' lower upper
       traverse_ go rest
     go (Primop _ ps vs rest) =
-      traverse_ recordUse ps >> traverse_ addGenericVar vs >> traverse_ go rest
+      traverse_ use ps >> traverse_ enterSimple vs >> traverse_ go rest
+
+type Env = IM.IntMap Value
+
+-- | A `Var` can refer to another `Var`, and so on and so forth.
+-- `rename` follows the chain of `Var` and `Label` links to get
+-- the root value of a variable name.
+rename :: Value -> State Env Value
+rename = gets . go
+  where
+    go (Var v) env | Just v' <- IM.lookup v env = go v' env
+    go (Label v) env | Just v' <- IM.lookup v env = go v' env
+    go v _ = v
+
+-- | Adds a binding to the environment.
+newname :: Var -> Value -> State Env ()
+newname k v = modify' $ IM.insert k v
