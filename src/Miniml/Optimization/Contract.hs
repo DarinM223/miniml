@@ -1,15 +1,19 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
-module Miniml.Optimization.Contract where
+module Miniml.Optimization.Contract (gatherInfo, reduce) where
 
-import Control.Monad.State.Strict (State, execState, gets, modify')
+import Control.Monad.Extra (ifM, notM)
+import Control.Monad.State.Strict (State, execState, gets, modify', runState)
 import Data.Foldable (for_, traverse_)
 import Data.IntMap qualified as IM
 import GHC.Generics (Generic)
 import Miniml.Cps (Cexp (..), Value (Label, Var), Var)
 import Miniml.Shared (Access, Primop)
-import Optics (at', (%), _Just)
+import Optics (at', (%), (^.), _Just)
 import Optics.State.Operators ((%=))
+import Optics.Zoom (zoom)
 
 type ContractInfo = IM.IntMap Info
 
@@ -117,13 +121,49 @@ type Env = IM.IntMap Value
 -- | A `Var` can refer to another `Var`, and so on and so forth.
 -- `rename` follows the chain of `Var` and `Label` links to get
 -- the root value of a variable name.
-rename :: Value -> State Env Value
-rename = gets . go
-  where
-    go (Var v) env | Just v' <- IM.lookup v env = go v' env
-    go (Label v) env | Just v' <- IM.lookup v env = go v' env
-    go v _ = v
+rename' :: Env -> Value -> Value
+rename' env (Var v) | Just v' <- IM.lookup v env = rename' env v'
+rename' env (Label v) | Just v' <- IM.lookup v env = rename' env v'
+rename' _ v = v
 
--- | Adds a binding to the environment.
-newname :: Var -> Value -> State Env ()
-newname k v = modify' $ IM.insert k v
+data ContractState = ContractState
+  { env :: {-# UNPACK #-} !Env,
+    info :: {-# UNPACK #-} !ContractInfo,
+    clicks :: {-# UNPACK #-} !Int
+  }
+  deriving (Generic)
+
+reduce :: Env -> ContractInfo -> Cexp -> (Int, Cexp)
+reduce env0 info0 e0 =
+  let (e0', s) = runState (go e0) (ContractState env0 info0 0)
+   in (s ^. #clicks, e0')
+  where
+    click :: State ContractState ()
+    click = zoom #clicks $ modify' (+ 1)
+
+    rename :: Value -> State ContractState Value
+    rename = zoom #env . gets . flip rename'
+
+    newname :: Var -> Value -> State ContractState ()
+    newname k v = zoom #env $ modify' $ IM.insert k v
+
+    used :: Var -> State ContractState Bool
+    used v = zoom #info $ gets $ \m -> m IM.! v ^. #used > 0
+
+    lookupInfo :: Value -> State ContractState Info
+    lookupInfo (Var v) = zoom #info $ gets $ \m -> m IM.! v
+    lookupInfo _ = error "Invalid value"
+
+    go :: Cexp -> State ContractState Cexp
+    go (Select i v w e) =
+      ifM
+        (notM (used w))
+        (click >> go e)
+        ( rename v >>= lookupInfo >>= \case
+            Info (RecordInfo vl) _ _ -> do
+              click
+              newname w =<< rename (fst (vl !! i))
+              go e
+            _ -> Select i <$> rename v <*> pure w <*> go e
+        )
+    go _ = undefined
