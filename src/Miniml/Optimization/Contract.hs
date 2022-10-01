@@ -7,11 +7,13 @@ module Miniml.Optimization.Contract (gatherInfo, reduce) where
 import Control.Monad.Extra (ifM, notM)
 import Control.Monad.State.Strict (State, execState, gets, modify', runState)
 import Data.Foldable (for_, traverse_)
+import Data.Functor.Foldable (cata, embed)
+import Data.Generics.Product.Types (types)
 import Data.IntMap qualified as IM
 import GHC.Generics (Generic)
-import Miniml.Cps (Cexp (..), Value (Label, Var), Var)
+import Miniml.Cps (Cexp (..), CexpF (..), Value (Label, Var), Var)
 import Miniml.Shared (Access, Primop)
-import Optics (at', (%), (^.), _Just)
+import Optics (at', traverseOf, (%), (^.), _Just)
 import Optics.State.Operators ((%=))
 import Optics.Zoom (zoom)
 
@@ -135,7 +137,9 @@ data ContractState = ContractState
 
 reduce :: Env -> ContractInfo -> Cexp -> (Int, Cexp)
 reduce env0 info0 e0 =
-  let (e0', s) = runState (go e0) (ContractState env0 info0 0)
+  let (e0', s) =
+        flip runState (ContractState env0 info0 0) $
+          cata go e0 >>= traverseOf (types @Value) rename
    in (s ^. #clicks, e0')
   where
     click :: State ContractState ()
@@ -154,16 +158,14 @@ reduce env0 info0 e0 =
     lookupInfo (Var v) = zoom #info $ gets $ \m -> m IM.! v
     lookupInfo _ = error "Invalid value"
 
-    go :: Cexp -> State ContractState Cexp
-    go (Select i v w e) =
+    go :: CexpF (State ContractState Cexp) -> State ContractState Cexp
+    go (SelectF i v w e) =
       ifM
         (notM (used w))
-        (click >> go e)
+        (click >> e)
         ( rename v >>= lookupInfo >>= \case
-            Info (RecordInfo vl) _ _ -> do
-              click
-              newname w =<< rename (fst (vl !! i))
-              go e
-            _ -> Select i <$> rename v <*> pure w <*> go e
+            Info (RecordInfo vl) _ _ ->
+              click >> (newname w =<< rename (fst (vl !! i))) >> e
+            _ -> Select i v w <$> e
         )
-    go _ = undefined
+    go e = embed <$> sequence e

@@ -1,9 +1,10 @@
 module Miniml.Shared where
 
 import Control.Monad.State.Strict (MonadState (get), modify')
+import GHC.Generics (Generic)
 
 data Access = Offp Int | Selp Int Access
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
 
 data Primop
   = Times
@@ -51,7 +52,7 @@ data Primop
   | Notb
   | Callcc
   | Throw
-  deriving (Show)
+  deriving (Show, Generic)
 
 fresh :: MonadState Int m => m Int
 fresh = modify' (+ 1) >> get

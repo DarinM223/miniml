@@ -11,6 +11,7 @@ import Data.Char (ord)
 import Data.Functor.Foldable.TH (makeBaseFunctor)
 import Data.Text (Text)
 import Data.Text qualified as T
+import GHC.Generics (Generic)
 import Miniml.Lambda qualified as L
 import Miniml.Shared (Access (..), Primop (Callcc, Gethdlr, Sethdlr, Throw), fresh)
 
@@ -32,7 +33,7 @@ data Cexp
   | Fix [(Var, [Var], Cexp)] Cexp
   | Switch Value [Cexp]
   | Primop Primop [Value] [Var] [Cexp]
-  deriving (Show)
+  deriving (Show, Generic)
 
 makeBaseFunctor ''Cexp
 
