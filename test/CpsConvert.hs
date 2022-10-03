@@ -24,13 +24,16 @@ tests =
     [ testCase "Var" testVar
     ]
 
+infinity :: Double
+infinity = 1 / 0
+
 args :: SemanticsArgs Int answer
 args =
   SemanticsArgs
     { minInt = minBound @Int,
       maxInt = maxBound @Int,
-      minReal = fromIntegral (minBound @Int),
-      maxReal = fromIntegral (maxBound @Int),
+      minReal = -infinity,
+      maxReal = infinity,
       stringToReal = read @Double . T.unpack,
       nextLoc = (+ 1),
       arbitrarily = \(a, b) ->
