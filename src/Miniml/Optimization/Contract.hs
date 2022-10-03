@@ -4,15 +4,18 @@
 
 module Miniml.Optimization.Contract (gatherInfo, reduce) where
 
+import Control.Applicative (liftA3)
+import Control.Monad (filterM, when)
 import Control.Monad.Extra (ifM, notM)
 import Control.Monad.State.Strict (State, execState, gets, modify', runState)
 import Data.Foldable (for_, traverse_)
+import Data.Functor ((<&>))
 import Data.Functor.Foldable (cata, embed)
 import Data.Generics.Product.Types (types)
 import Data.IntMap qualified as IM
 import GHC.Generics (Generic)
-import Miniml.Cps (Cexp (..), CexpF (..), Value (Label, Var), Var)
-import Miniml.Shared (Access, Primop)
+import Miniml.Cps (Cexp (..), CexpF (..), Value (..), Var)
+import Miniml.Shared (Access, Primop (..))
 import Optics (at', traverseOf, (%), (^.), _Just)
 import Optics.State.Operators ((%=))
 import Optics.Zoom (zoom)
@@ -168,4 +171,68 @@ reduce env0 info0 e0 =
               click >> (newname w =<< rename (fst (vl !! i))) >> e
             _ -> Select i v w <$> e
         )
+    go e@(SwitchF v es) =
+      rename v >>= \case
+        Int i -> click >> es !! i
+        _ -> embed <$> sequence e
+    go (FixF [] rest) = rest -- TODO(DarinM223): click?
+    go (FixF fns rest) = do
+      fns' <- filterM (notM . canBeDropped) fns
+      if null fns' then rest else embed <$> sequence (FixF fns' rest)
+      where
+        canBeDropped (f, _, _) =
+          lookupInfo (Var f) <&> \case
+            -- Filter all used == 1 && called == 1 too.
+            Info (FunctionInfo (FunctionInfo' _ _ _ 1)) 1 _ -> True
+            Info _ 0 _ -> True
+            _ -> False
+    -- If f's used == 1 && called == 1 then replace with function body.
+    go e@(AppF f vs) =
+      rename f >>= lookupInfo >>= \case
+        Info (FunctionInfo (FunctionInfo' ps body _ 1)) 1 _ -> do
+          click
+          vs' <- traverse rename vs
+          traverse_ (uncurry newname) $ zip ps vs'
+          pure body
+        _ -> embed <$> sequence e
+    go (RecordF _ v a) =
+      ifM
+        (notM (used v))
+        (click >> a)
+        undefined
+    go e@(PrimopF Negate [p] [v] [r]) =
+      ifM
+        (notM (used v))
+        (click >> r)
+        ( rename p >>= \case
+            Int i -> click >> newname v (Int (negate i)) >> r
+            _ -> embed <$> sequence e
+        )
+    go e@(PrimopF op [a, b] [v] [r])
+      | op `elem` [Plus, Minus, Times, Div, Fadd, Fsub, Fmul, Fdiv] =
+          liftA3 (op,,,) (rename a) (rename b) (lookupInfo (Var v)) >>= \case
+            (Times, Int 1, x@(Var _), Info _ n _) -> const' n x
+            (Times, x@(Var _), Int 1, Info _ n _) -> const' n x
+            (Times, Int 0, _, Info _ n _) -> const' n (Int 0)
+            (Times, _, Int 0, Info _ n _) -> const' n (Int 0)
+            (Times, Int i, Int j, Info (ArithPrimInfo (ArithPrimInfo' l u)) n _) ->
+              constFold (i * j) l u n
+            (Div, x@(Var _), Int 1, Info _ n _) -> const' n x
+            (Div, Int i, Int j, Info (ArithPrimInfo (ArithPrimInfo' l u)) n _)
+              | j /= 0 -> constFold (i `quot` j) l u n
+            (Plus, x@(Var _), Int 0, Info _ n _) -> const' n x
+            (Plus, Int 0, x@(Var _), Info _ n _) -> const' n x
+            (Plus, Int i, Int j, Info (ArithPrimInfo (ArithPrimInfo' l u)) n _) ->
+              constFold (i + j) l u n
+            (Minus, x@(Var _), Int 0, Info _ n _) -> const' n x
+            (Minus, Int i, Int j, Info (ArithPrimInfo (ArithPrimInfo' l u)) n _) ->
+              constFold (i - j) l u n
+            _ -> embed <$> sequence e
+      where
+        const' n x = click >> when (n > 0) (newname v x) >> r
+        constFold result lower upper numUsed
+          | result <= upper && result >= lower = const' numUsed (Int result)
+          | otherwise = embed <$> sequence e
+    go e@(PrimopF _ _ [v] [a]) =
+      ifM (notM (used v)) (click >> a) (embed <$> sequence e)
     go e = embed <$> sequence e

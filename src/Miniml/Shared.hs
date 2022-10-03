@@ -52,7 +52,7 @@ data Primop
   | Notb
   | Callcc
   | Throw
-  deriving (Show, Generic)
+  deriving (Show, Eq, Generic)
 
 fresh :: MonadState Int m => m Int
 fresh = modify' (+ 1) >> get
