@@ -25,6 +25,7 @@ library
                     , Miniml.Lambda
                     , Miniml.Optimization.CataExample
                     , Miniml.Optimization.Contract
+                    , Miniml.Optimization.Flatten
                     , Miniml.Semantics
                     , Miniml.Shared
 

@@ -39,7 +39,7 @@ data SpecificInfo
 
 data FunctionInfo' = FunctionInfo'
   { formalParams :: [Var],
-    body :: Cexp,
+    body :: !Cexp,
     calls :: {-# UNPACK #-} !Int,
     -- | True if function has not been marked as irreducible by other phases
     reducible :: !Bool
