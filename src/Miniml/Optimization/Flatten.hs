@@ -4,6 +4,7 @@
 
 module Miniml.Optimization.Flatten (gatherInfo, reduce) where
 
+import Control.Monad (when)
 import Control.Monad.State.Strict (State, execState)
 import Data.Foldable (for_, traverse_)
 import Data.Functor.Foldable (cata, embed)
@@ -73,11 +74,31 @@ field v _ = escape v
 click :: State GatherState ()
 click = #clicks %= (+ 1)
 
-checkFlatten :: (Var, [Var], Cexp) -> State GatherState ()
-checkFlatten (f, vl, body) = undefined
+checkFlatten :: Int -> (Var, [Var], Cexp) -> State GatherState ()
+checkFlatten maxRegs (f, vl, _) = do
+  usageInfo <- use #usageInfo
+  case IM.lookup f usageInfo of
+    Just (FunctionInfo (F arity _ esc)) -> do
+      let go (a : as) (v : vs) headroom =
+            case (a, IM.lookup v usageInfo) of
+              (Count c someNonRecord, Just (ArgumentInfo j))
+                | j > -1 && headroom' > 0 && not (someNonRecord || esc) ->
+                    a : go as vs headroom'
+                where
+                  headroom' = headroom - (c - 1)
+              _ -> Top : go as vs headroom
+          go _ _ _ = []
+          arity' = go arity vl (maxRegs - 1 - length arity)
+      let fnInfo = #usageInfo % at' f % _Just % #_FunctionInfo
+      fnInfo % #arity .= arity'
+      when (any flattened arity') $ fnInfo % #alias ?= f >> click
+    _ -> pure ()
+  where
+    flattened (Count _ _) = True
+    flattened _ = False
 
-gatherInfo :: Cexp -> (Int, UsageInfo)
-gatherInfo e0 =
+gatherInfo :: Int -> Cexp -> (Int, UsageInfo)
+gatherInfo maxRegs e0 =
   let GatherState !i !c = execState (go e0) (GatherState IM.empty 0)
    in (c, i)
   where
@@ -90,34 +111,31 @@ gatherInfo e0 =
     go (Primop _ vs _ el) = traverse_ escape vs >> traverse_ go el
     go (App (Var f) vl) = do
       traverse_ escape vl
-      usage <- use #usageInfo
-      #usageInfo % at' f % _Just % #_FunctionInfo % #arity %= update usage
+      usageInfo <- use #usageInfo
+      #usageInfo % at' f % _Just % #_FunctionInfo % #arity %= update usageInfo
       where
         update :: UsageInfo -> [Arity] -> [Arity]
-        update usage = flip (loop usage) vl
+        update usageInfo as = uncurry (updateParam usageInfo) <$> zip as vl
 
-        loop :: UsageInfo -> [Arity] -> [Value] -> [Arity]
-        loop usage (a : as) (Var v : vs) =
-          case (a, IM.lookup v usage) of
-            (Bottom, Just (RecordInfo sz)) ->
-              loop usage (Count sz False : as) (Var v : vs)
-            (Bottom, _) -> Unknown : loop usage as vs
-            (Unknown, Just (RecordInfo sz)) ->
-              loop usage (Count sz True : as) (Var v : vs)
-            (Unknown, _) -> Unknown : loop usage as vs
-            (Count n _, Just (RecordInfo sz)) ->
-              (if n == sz then a else Top) : loop usage as vs
-            (Count n _, _) -> Count n True : loop usage as vs
-            (Top, _) -> Top : loop usage as vs
-        loop _ _ _ = []
+        updateParam :: UsageInfo -> Arity -> Value -> Arity
+        updateParam usageInfo arity (Var v) =
+          case (arity, IM.lookup v usageInfo) of
+            (Bottom, Just (RecordInfo sz)) -> Count sz False
+            (Bottom, _) -> Unknown
+            (Unknown, Just (RecordInfo sz)) -> Count sz True
+            (Unknown, _) -> Unknown
+            (Count n _, Just (RecordInfo sz)) -> if n == sz then arity else Top
+            (Count n _, _) -> Count n True
+            (Top, _) -> Top
+        updateParam _ _ _ = Top
     go (App _ vl) = traverse_ escape vl
     go (Fix l e) = do
       for_ l $ \(f, vl, _) -> do
-        enter f (FunctionInfo (F (fmap (const Bottom) vl) Nothing False))
+        enter f (FunctionInfo (F (Bottom <$ vl) Nothing False))
         traverse_ (`enter` ArgumentInfo (-1)) vl
       traverse_ (\(_, _, body) -> go body) l
       go e
-      traverse_ checkFlatten l
+      traverse_ (checkFlatten maxRegs) l
 
 reduce :: UsageInfo -> Cexp -> Cexp
 reduce usage = cata go
