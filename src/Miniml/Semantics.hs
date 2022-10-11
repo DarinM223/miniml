@@ -4,7 +4,9 @@
 module Miniml.Semantics where
 
 import Control.Exception (Exception, throw)
+import Control.Monad.Extra (ifM, (&&^))
 import Data.Char (ord)
+import Data.Foldable.Extra (allM)
 import Data.Text qualified as T
 import Miniml.Cps qualified as Cps
 import Miniml.Shared qualified as Cps
@@ -13,111 +15,112 @@ data Undefined = Undefined deriving (Show)
 
 instance Exception Undefined
 
-data SemanticsArgs loc answer = SemanticsArgs
+data SemanticsArgs loc answer m = SemanticsArgs
   { minInt :: Int,
     maxInt :: Int,
     minReal :: Double,
     maxReal :: Double,
     stringToReal :: T.Text -> Double,
     nextLoc :: loc -> loc,
-    arbitrarily :: forall a. (a, a) -> a,
+    arbitrarily :: forall a. m a -> m a -> m a,
     handlerRef :: loc,
-    overflowExn :: DValue loc answer,
-    divExn :: DValue loc answer
+    overflowExn :: DValue loc answer m,
+    divExn :: DValue loc answer m
   }
 
-type Store loc answer = (loc, loc -> DValue loc answer, loc -> Int)
+type Store loc answer m = (loc, loc -> DValue loc answer m, loc -> Int)
 
-data DValue loc answer
-  = Record [DValue loc answer] Int
+data DValue loc answer m
+  = Record [DValue loc answer m] Int
   | Int Int
   | Real Double
-  | Func ([DValue loc answer] -> Store loc answer -> answer)
+  | Func ([DValue loc answer m] -> Store loc answer m -> m answer)
   | String T.Text
   | Bytearray [loc]
   | Array [loc]
   | Uarray [loc]
 
-fetch :: Store loc answer -> loc -> DValue loc answer
+fetch :: Store loc answer m -> loc -> DValue loc answer m
 fetch (_, f, _) = f
 
 upd ::
   Eq loc =>
-  Store loc answer ->
+  Store loc answer m ->
   loc ->
-  DValue loc answer ->
-  Store loc answer
+  DValue loc answer m ->
+  Store loc answer m
 upd (n, f, g) l v = (n, \i -> if i == l then v else f i, g)
 
-fetchi :: Store loc answer -> loc -> Int
+fetchi :: Store loc answer m -> loc -> Int
 fetchi (_, _, g) = g
 
-updi :: Eq loc => Store loc answer -> loc -> Int -> Store loc answer
+updi :: Eq loc => Store loc answer m -> loc -> Int -> Store loc answer m
 updi (n, f, g) l v = (n, f, \i -> if i == l then v else g i)
 
 eqlist ::
-  (?args :: SemanticsArgs loc answer, Eq loc) =>
-  [DValue loc answer] ->
-  [DValue loc answer] ->
-  Bool
-eqlist l1 l2 = all (uncurry eq) (zip l1 l2)
+  (?args :: SemanticsArgs loc answer m, Eq loc, Monad m) =>
+  [DValue loc answer m] ->
+  [DValue loc answer m] ->
+  m Bool
+eqlist l1 l2 = allM (uncurry eq) (zip l1 l2)
 
 eq ::
-  (?args :: SemanticsArgs loc answer, Eq loc) =>
-  DValue loc answer ->
-  DValue loc answer ->
-  Bool
-eq (Record a i) (Record b j) = arbitrarily ?args (i == j && eqlist a b, False)
-eq (Int i) (Int j) = i == j
-eq (Real a) (Real b) = arbitrarily ?args (a == b, False)
-eq (String a) (String b) = arbitrarily ?args (a == b, False)
-eq (Bytearray []) (Bytearray []) = True
-eq (Bytearray (a : _)) (Bytearray (b : _)) = a == b
-eq (Array []) (Array []) = True
-eq (Array (a : _)) (Array (b : _)) = a == b
-eq (Uarray []) (Uarray []) = True
-eq (Uarray (a : _)) (Uarray (b : _)) = a == b
+  (?args :: SemanticsArgs loc answer m, Eq loc, Monad m) =>
+  DValue loc answer m ->
+  DValue loc answer m ->
+  m Bool
+eq (Record a i) (Record b j) =
+  arbitrarily ?args (pure (i == j) &&^ eqlist a b) (pure False)
+eq (Int i) (Int j) = pure $ i == j
+eq (Real a) (Real b) = arbitrarily ?args (pure (a == b)) (pure False)
+eq (String a) (String b) = arbitrarily ?args (pure (a == b)) (pure False)
+eq (Bytearray []) (Bytearray []) = pure True
+eq (Bytearray (a : _)) (Bytearray (b : _)) = pure $ a == b
+eq (Array []) (Array []) = pure True
+eq (Array (a : _)) (Array (b : _)) = pure $ a == b
+eq (Uarray []) (Uarray []) = pure True
+eq (Uarray (a : _)) (Uarray (b : _)) = pure $ a == b
 eq (Func _) (Func _) = throw Undefined
-eq (Int i) _ = arbitrarily ?args (False, i < 0 || i > 255)
-eq _ (Int i) = arbitrarily ?args (False, i < 0 || i > 255)
-eq _ _ = False
+eq (Int i) _ = arbitrarily ?args (pure False) (pure (i < 0 || i > 255))
+eq _ (Int i) = arbitrarily ?args (pure False) (pure (i < 0 || i > 255))
+eq _ _ = pure False
 
 doRaise ::
-  (?args :: SemanticsArgs loc answer) =>
-  DValue loc answer ->
-  Store loc answer ->
-  answer
+  (?args :: SemanticsArgs loc answer m) =>
+  DValue loc answer m ->
+  Store loc answer m ->
+  m answer
 doRaise exn s = case fetch s (handlerRef ?args) of
   Func f -> f [exn] s
   _ -> error "doRaise: fetching the handler should return Func"
 
 overflow ::
-  (?args :: SemanticsArgs loc answer) =>
+  (?args :: SemanticsArgs loc answer m) =>
   Int ->
-  ([DValue loc answer] -> Store loc answer -> answer) ->
-  Store loc answer ->
-  answer
+  ([DValue loc answer m] -> Store loc answer m -> m answer) ->
+  Store loc answer m ->
+  m answer
 overflow n c
   | n >= minInt ?args && n <= maxInt ?args = c [Int n]
   | otherwise = doRaise $ overflowExn ?args
 
 overflowr ::
-  (?args :: SemanticsArgs loc answer) =>
+  (?args :: SemanticsArgs loc answer m) =>
   Double ->
-  ([DValue loc answer] -> Store loc answer -> answer) ->
-  Store loc answer ->
-  answer
+  ([DValue loc answer m] -> Store loc answer m -> m answer) ->
+  Store loc answer m ->
+  m answer
 overflowr n c
   | n >= minReal ?args && n <= maxReal ?args = c [Real n]
   | otherwise = doRaise $ overflowExn ?args
 
-type Env loc answer = Cps.Var -> DValue loc answer
+type Env loc answer m = Cps.Var -> DValue loc answer m
 
 convertValue ::
-  (?args :: SemanticsArgs loc answer) =>
-  Env loc answer ->
+  (?args :: SemanticsArgs loc answer m) =>
+  Env loc answer m ->
   Cps.Value ->
-  DValue loc answer
+  DValue loc answer m
 convertValue _ (Cps.Int i) = Int i
 convertValue _ (Cps.Real r) = Real (stringToReal ?args r)
 convertValue _ (Cps.String s) = String s
@@ -132,19 +135,19 @@ bindn env (v : vl) (d : dl) = bindn (bind env v d) vl dl
 bindn env [] [] = env
 bindn _ _ _ = error "bindn: invalid pattern"
 
-evalPath :: DValue loc answer -> Cps.Access -> DValue loc answer
+evalPath :: DValue loc answer m -> Cps.Access -> DValue loc answer m
 evalPath x (Cps.Offp 0) = x
 evalPath (Record l i) (Cps.Offp j) = Record l (i + j)
 evalPath (Record l i) (Cps.Selp j p) = evalPath (l !! (i + j)) p
 evalPath _ _ = error "evalPath: invalid pattern"
 
 evalPrim ::
-  (Num loc, Eq loc, ?args :: SemanticsArgs loc answer) =>
+  (Num loc, Eq loc, ?args :: SemanticsArgs loc answer m, Monad m) =>
   Cps.Primop ->
-  [DValue loc answer] ->
-  [[DValue loc answer] -> Store loc answer -> answer] ->
-  Store loc answer ->
-  answer
+  [DValue loc answer m] ->
+  [[DValue loc answer m] -> Store loc answer m -> m answer] ->
+  Store loc answer m ->
+  m answer
 evalPrim Cps.Plus [Int i, Int j] [c] = overflow (i + j) c
 evalPrim Cps.Minus [Int i, Int j] [c] = overflow (i - j) c
 evalPrim Cps.Times [Int i, Int j] [c] = overflow (i * j) c
@@ -155,20 +158,13 @@ evalPrim Cps.Lt [Int i, Int j] [t, f] = if i < j then t [] else f []
 evalPrim Cps.Leq [Int i, Int j] [t, f] = if j < i then f [] else t []
 evalPrim Cps.Gt [Int i, Int j] [t, f] = if j < i then t [] else f []
 evalPrim Cps.Geq [Int i, Int j] [t, f] = if i < j then f [] else t []
-evalPrim Cps.Ieql [a, b] [t, f] = if eq a b then t [] else f []
-evalPrim Cps.Ineq [a, b] [t, f] = if eq a b then f [] else t []
-evalPrim Cps.Rangechk [Int i, Int j] [t, f] =
-  if j < 0
-    then
-      if i < 0
-        then if i < j then t [] else f []
-        else t []
-    else
-      if i < 0
-        then f []
-        else if i < j then t [] else f []
-evalPrim Cps.Boxed [Int i] [t, f] =
-  if i < 0 || i > 255 then arbitrarily ?args (t [], f []) else f []
+evalPrim Cps.Ieql [a, b] [t, f] = \s -> ifM (eq a b) (t [] s) (f [] s)
+evalPrim Cps.Ineq [a, b] [t, f] = \s -> ifM (eq a b) (f [] s) (t [] s)
+evalPrim Cps.Rangechk [Int i, Int j] [t, f]
+  | j < 0 = if i < 0 then if i < j then t [] else f [] else t []
+  | otherwise = if i < 0 then f [] else if i < j then t [] else f []
+evalPrim Cps.Boxed [Int i] [t, f] = \s ->
+  if i < 0 || i > 255 then arbitrarily ?args (t [] s) (f [] s) else f [] s
 evalPrim Cps.Boxed [Record _ _] [t, _] = t []
 evalPrim Cps.Boxed [String _] [t, _] = t []
 evalPrim Cps.Boxed [Array _] [t, _] = t []
@@ -215,11 +211,11 @@ evalPrim Cps.Fge [Real i, Real j] [t, f] = if i < j then f [] else t []
 evalPrim p _ _ = error $ "evalPrim: invalid pattern " ++ show p
 
 denotExpr ::
-  (?args :: SemanticsArgs loc answer, Num loc, Eq loc) =>
-  (Cps.Var -> DValue loc answer) ->
+  (?args :: SemanticsArgs loc answer m, Num loc, Eq loc, Monad m) =>
+  (Cps.Var -> DValue loc answer m) ->
   Cps.Cexp ->
-  Store loc answer ->
-  answer
+  Store loc answer m ->
+  m answer
 denotExpr env (Cps.Select i (convertValue env -> Record l j) w e) =
   denotExpr (bind env w (l !! (i + j))) e
 denotExpr env (Cps.Offset i (convertValue env -> Record l j) w e) =
@@ -243,15 +239,28 @@ denotExpr env (Cps.Fix fl e) = denotExpr (g env) e
     g r = bindn r (fmap (\(n, _, _) -> n) fl) (fmap (h r) fl)
 denotExpr _ p = error $ "denotExpr: invalid pattern" ++ show p
 
-type Eval loc answer =
-  [Cps.Var] -> [DValue loc answer] -> Cps.Cexp -> Store loc answer -> answer
+type Eval loc answer m =
+  [Cps.Var] -> [DValue loc answer m] -> Cps.Cexp -> Store loc answer m -> m answer
 
-env0 :: Env loc answer
+env0 :: Env loc answer m
 env0 _ = throw Undefined
 
-cpsSemantics :: (?args :: SemanticsArgs loc answer, Num loc, Eq loc) => Eval loc answer
-cpsSemantics vl dl = denotExpr (bindn env0 vl dl)
+cps ::
+  (?args :: SemanticsArgs loc answer m, Num loc, Eq loc, Monad m) =>
+  Eval loc answer m
+cps vl dl = denotExpr (bindn env0 vl dl)
 
 withArgs ::
-  SemanticsArgs loc answer -> ((?args :: SemanticsArgs loc answer) => a) -> a
+  SemanticsArgs loc answer m -> ((?args :: SemanticsArgs loc answer m) => a) -> a
 withArgs args f = let ?args = args in f
+
+initialStore ::
+  (Eq loc, ?args :: SemanticsArgs loc answer m) =>
+  loc ->
+  ([DValue loc answer m] -> Store loc answer m -> m answer) ->
+  Store loc answer m
+initialStore next handler =
+  upd
+    (next, \_ -> throw Undefined, \_ -> throw Undefined)
+    (handlerRef ?args)
+    (Func handler)

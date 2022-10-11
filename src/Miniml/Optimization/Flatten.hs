@@ -79,7 +79,7 @@ checkFlatten maxRegs (f, vl, _) = do
   usageInfo <- use #usageInfo
   case IM.lookup f usageInfo of
     Just (FunctionInfo (F arity _ esc)) -> do
-      let go (a : as) (v : vs) headroom =
+      let go (a : as) (v : vs) !headroom =
             case (a, IM.lookup v usageInfo) of
               (Count c someNonRecord, Just (ArgumentInfo j))
                 | j > -1 && headroom' > 0 && not (someNonRecord || esc) ->

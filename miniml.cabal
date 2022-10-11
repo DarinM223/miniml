@@ -77,6 +77,8 @@ test-suite miniml-test
     other-modules:    CpsConvert
     build-depends:    base ^>=4.16
                     , miniml
+                    , extra
+                    , mtl
                     , random
                     , tasty
                     , tasty-hunit

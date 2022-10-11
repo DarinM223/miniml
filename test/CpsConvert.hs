@@ -1,19 +1,16 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module CpsConvert (tests) where
 
-import Control.Exception (throw)
-import Control.Monad.Trans.State.Strict (runState)
+import Control.Monad.Except (Except, runExcept, throwError)
+import Control.Monad.Extra (ifM)
+import Control.Monad.State.Strict (StateT, evalStateT, runState, state)
 import Data.Text qualified as T
 import Miniml.Cps qualified as Cps
 import Miniml.Lambda qualified as Lambda
-import Miniml.Semantics
-  ( DValue (..),
-    SemanticsArgs (..),
-    Undefined (Undefined),
-    cpsSemantics,
-    withArgs,
-  )
-import System.IO.Unsafe (unsafePerformIO)
-import System.Random (randomRIO)
+import Miniml.Semantics (DValue (..), SemanticsArgs (..))
+import Miniml.Semantics qualified as Semantics
+import System.Random (StdGen, getStdGen, randomR)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, (@?=))
 
@@ -27,7 +24,13 @@ tests =
 infinity :: Double
 infinity = 1 / 0
 
-args :: SemanticsArgs Int answer
+type SemanticM = StateT StdGen (Except T.Text)
+
+defaultHandler :: [DValue loc answer SemanticM] -> store -> SemanticM answer
+defaultHandler (String s : _) _ = throwError s
+defaultHandler _ _ = throwError "Unknown exception"
+
+args :: SemanticsArgs Int answer SemanticM
 args =
   SemanticsArgs
     { minInt = minBound @Int,
@@ -36,20 +39,22 @@ args =
       maxReal = infinity,
       stringToReal = read @Double . T.unpack,
       nextLoc = (+ 1),
-      arbitrarily = \(a, b) ->
-        if unsafePerformIO (randomRIO (False, True)) then a else b,
-      handlerRef = undefined,
-      overflowExn = undefined,
-      divExn = undefined
+      arbitrarily = ifM (state (randomR (False, True))),
+      handlerRef = -1,
+      overflowExn = String "Overflow exception",
+      divExn = String "Division exception"
     }
 
 testVar :: IO ()
-testVar = withArgs args $ do
+testVar = Semantics.withArgs args $ do
+  stdGen <- getStdGen
   let e = 0
-      ((k, e'), _) = runState (Cps.convert (Lambda.Var e)) 0
-      func ((Int i) : _) store = i
-      semantics = cpsSemantics [e, k] [Int 420, Func func] e'
-      result = semantics (0, \_ -> throw Undefined, \_ -> throw Undefined)
+      ((k, e'), c) = runState (Cps.convert (Lambda.Var e)) 0
+      func ((Int i) : _) store = pure i
+      semantics = Semantics.cps [e, k] [Int 420, Func func] e'
+      result =
+        runExcept . flip evalStateT stdGen $
+          semantics (Semantics.initialStore c defaultHandler)
   k @?= 1
   show e' @?= "App (Var 1) [Var 0]"
-  result @?= 420
+  result @?= Right 420
