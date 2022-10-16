@@ -4,15 +4,16 @@
 
 module Miniml.Optimization.Flatten (gatherInfo, reduce) where
 
-import Control.Monad (when)
-import Control.Monad.State.Strict (State, execState)
-import Data.Foldable (for_, traverse_)
-import Data.Functor.Foldable (cata, embed)
+import Control.Monad (replicateM, when)
+import Control.Monad.Cont (ContT (ContT, runContT))
+import Control.Monad.State.Strict (State, execState, state)
+import Data.Foldable (foldlM, for_, traverse_)
+import Data.Functor.Foldable (embed, project)
 import Data.IntMap qualified as IM
 import GHC.Generics (Generic)
-import Miniml.Cps (Cexp (..), CexpF (..), Value (..), Var)
-import Miniml.Shared (Access (Selp))
-import Optics (at', use, (%), _Just)
+import Miniml.Cps (Cexp (..), Value (..), Var)
+import Miniml.Shared (Access (Offp, Selp), fresh)
+import Optics (at', use, zoom, (%), _Just)
 import Optics.State.Operators ((%=), (.=), (?=))
 
 -- | The arity information of a function parameter.
@@ -23,11 +24,11 @@ data Arity
     Unknown
   | -- | Is a known record.
     Count
-      { numFields :: {-# UNPACK #-} !Int,
-        -- | True if at some function calls this parameter was unknown.
-        -- False if at all function calls this parameter was a known record.
-        anyUnknownCalls :: !Bool
-      }
+      {-# UNPACK #-} !Int
+      -- ^ Number of fields in the record.
+      !Bool
+      -- ^ True if at some function calls this parameter was unknown.
+      -- False if at all function calls this parameter was a known record.
   | -- | Cannot flatten this argument. Cannot be updated.
     Top
 
@@ -49,7 +50,8 @@ data FunctionInfo = F
 type UsageInfo = IM.IntMap Info
 
 data GatherState = GatherState
-  { usageInfo :: {-# UNPACK #-} !UsageInfo,
+  { usageInfo :: !UsageInfo,
+    counter :: {-# UNPACK #-} !Int,
     clicks :: {-# UNPACK #-} !Int
   }
   deriving (Generic)
@@ -91,16 +93,19 @@ checkFlatten maxRegs (f, vl, _) = do
           arity' = go arity vl (maxRegs - 1 - length arity)
       let fnInfo = #usageInfo % at' f % _Just % #_FunctionInfo
       fnInfo % #arity .= arity'
-      when (any flattened arity') $ fnInfo % #alias ?= f >> click
+      when (any flattened arity') $ do
+        f' <- zoom #counter fresh
+        fnInfo % #alias ?= f'
+        click
     _ -> pure ()
   where
     flattened (Count _ _) = True
     flattened _ = False
 
-gatherInfo :: Int -> Cexp -> (Int, UsageInfo)
-gatherInfo maxRegs e0 =
-  let GatherState !i !c = execState (go e0) (GatherState IM.empty 0)
-   in (c, i)
+gatherInfo :: Int -> Cexp -> State Int (Int, UsageInfo)
+gatherInfo maxRegs e0 = state $ \(!tmp) ->
+  let GatherState !i !tmp' !clk = execState (go e0) (GatherState IM.empty tmp 0)
+   in ((clk, i), tmp')
   where
     go :: Cexp -> State GatherState ()
     go (Record vl w e) =
@@ -137,9 +142,46 @@ gatherInfo maxRegs e0 =
       go e
       traverse_ (checkFlatten maxRegs) l
 
-reduce :: UsageInfo -> Cexp -> Cexp
-reduce usage = cata go
+reduce :: UsageInfo -> Cexp -> State Int Cexp
+reduce usage = go
   where
-    go (AppF f@(Var fv) vl) = undefined
-    go (FixF l e) = undefined
-    go e = embed e
+    go (App (Var f) vs)
+      | Just (FunctionInfo (F as (Just f') _)) <- IM.lookup f usage =
+          runContT
+            (foldlM collectArgs [] (zip as vs))
+            (pure . App (Var f') . reverse)
+      where
+        collectArgs args (Count cnt _, v) =
+          foldlM (unpackField v) args [0 .. cnt - 1]
+        collectArgs args (_, v) = pure $ v : args
+
+        unpackField v args i = ContT $ \c -> do
+          z <- fresh
+          Select i v z <$> c (Var z : args)
+    go (Fix l e) = do
+      l' <- processArgs l
+      embed <$> traverse go (project (Fix l' e))
+      where
+        processArgs :: [(Var, [Var], Cexp)] -> State Int [(Var, [Var], Cexp)]
+        processArgs [] = pure []
+        processArgs ((f, vs, body) : rest)
+          | Just (FunctionInfo (F as (Just f') _)) <- IM.lookup f usage = do
+              (vs', body') <- foldlM newArgs ([], body) $ zip as vs
+              ws <- traverse (const fresh) vs
+              -- Adds the function with flattened arguments, `f'`, and rewrites
+              -- `f` to call `f'` so that it can still work if `f` escapes.
+              -- It looks like `f` is calling itself instead of `f'`, but the
+              -- body of `f` hasn't been reduced yet. After being reduced, it
+              -- will be rewritten to call `f'` with the flattened arguments.
+              let fdef = (f, ws, App (Var f) (Var <$> ws))
+                  fdef' = (f', vs', body')
+              (fdef :) . (fdef' :) <$> processArgs rest
+        processArgs (fdef : rest) = (fdef :) <$> processArgs rest
+
+        newArgs (vl, body) (Count j _, v) = do
+          new <- replicateM j fresh
+          -- Pack the flattened arguments back into a record inside the body.
+          -- The contraction phase will remove unnecessary packing and selecting.
+          pure (new ++ vl, Record ((,Offp 0) . Var <$> new) v body)
+        newArgs (vl, body) (_, v) = pure (v : vl, body)
+    go e = embed <$> traverse go (project e)
