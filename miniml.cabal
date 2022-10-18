@@ -75,6 +75,7 @@ test-suite miniml-test
     hs-source-dirs:   test
     main-is:          MinimlTest.hs
     other-modules:    CpsConvert
+                    , Semantic
     build-depends:    base ^>=4.16
                     , miniml
                     , extra
@@ -84,3 +85,12 @@ test-suite miniml-test
                     , tasty-hunit
                     , text
                     , transformers
+    ghc-options: -Wall
+                 -Wcompat
+                 -Wincomplete-record-updates
+                 -Wincomplete-uni-patterns
+                 -Wredundant-constraints
+                 -Wredundant-record-wildcards
+                 -Wunused-record-wildcards
+                 -fshow-hole-constraints
+                 -haddock

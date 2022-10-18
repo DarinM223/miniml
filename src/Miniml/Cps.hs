@@ -13,7 +13,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.Generics (Generic)
 import Miniml.Lambda qualified as L
-import Miniml.Shared (Access (..), Primop (Callcc, Gethdlr, Sethdlr, Throw), fresh)
+import Miniml.Shared (Access (..), Primop (..), fresh)
 
 type Var = Int
 
@@ -33,17 +33,24 @@ data Cexp
   | Fix [(Var, [Var], Cexp)] Cexp
   | Switch Value [Cexp]
   | Primop Primop [Value] [Var] [Cexp]
-  deriving (Show, Generic)
+  deriving (Show, Eq, Generic)
 
 makeBaseFunctor ''Cexp
 
 data PrimopResult = OneResult | NoResult | Branching
 
 primopResultType :: Primop -> PrimopResult
-primopResultType = undefined
+primopResultType op
+  | op `elem` [Sethdlr, Store, Assign, Update, UnboxedAssign, UnboxedUpdate] = NoResult
+  | op `elem` [Ieql, Ineq, Lt, Leq, Gt, Geq, Feql, Fneq, Fge, Fgt, Fle, Flt, Rangechk, Boxed] = Branching
+  | otherwise = OneResult
 
 primopNumArgs :: Primop -> Int
-primopNumArgs = undefined
+primopNumArgs op
+  | op `elem` [Negate, Boxed, Bang, Makeref, MakerefUnboxed, Alength, Slength, Sethdlr] = 1
+  | op `elem` [Update, UnboxedUpdate, Store] = 3
+  | op == Gethdlr = 0
+  | otherwise = 2
 
 primopArgs :: Applicative f => Primop -> L.Lexp -> (L.Lexp -> f a) -> f [a]
 primopArgs i e go = case primopNumArgs i of
