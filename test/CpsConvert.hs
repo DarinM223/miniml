@@ -66,5 +66,41 @@ testPrimop1 = Semantics.withArgs args $ do
       semantics = Semantics.cps [k] [Func resultString] e'
       store = Semantics.initialStore c defaultHandler
       result = runSemanticM stdGen $ semantics store
-  e' @?= Cps.App (Cps.Var k) [Cps.Var 0]
+  e'
+    @?= Cps.Primop
+      Minus
+      [Cps.Int 1, Cps.Int 5]
+      [1]
+      [ Cps.Primop
+          Plus
+          [Cps.Var 1, Cps.Int 1]
+          [2]
+          [ Cps.Primop
+              Negate
+              [Cps.Var 2]
+              [3]
+              [ Cps.Fix
+                  [ ( 5,
+                      [6],
+                      Cps.Fix
+                        [(7, [8], Cps.App (Cps.Var 0) [Cps.Var 8])]
+                        ( Cps.Switch
+                            (Cps.Var 6)
+                            [ Cps.App (Cps.Var 7) [Cps.String "yes"],
+                              Cps.App (Cps.Var 7) [Cps.String "no"]
+                            ]
+                        )
+                    )
+                  ]
+                  ( Cps.Primop
+                      Ieql
+                      [Cps.Var 3, Cps.Int 3]
+                      [4]
+                      [ Cps.App (Cps.Var 5) [Cps.Int 0],
+                        Cps.App (Cps.Var 5) [Cps.Int 1]
+                      ]
+                  )
+              ]
+          ]
+      ]
   result @?= Right "yes"

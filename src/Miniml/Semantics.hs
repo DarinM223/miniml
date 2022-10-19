@@ -132,8 +132,7 @@ bind env v d w = if v == w then d else env w
 
 bindn :: Eq t => (t -> p) -> [t] -> [p] -> t -> p
 bindn env (v : vl) (d : dl) = bindn (bind env v d) vl dl
-bindn env [] [] = env
-bindn _ _ _ = error "bindn: invalid pattern"
+bindn env _ _ = env
 
 evalPath :: DValue loc answer m -> Cps.Access -> DValue loc answer m
 evalPath x (Cps.Offp 0) = x
@@ -153,7 +152,7 @@ evalPrim Cps.Minus [Int i, Int j] [c] = overflow (i - j) c
 evalPrim Cps.Times [Int i, Int j] [c] = overflow (i * j) c
 evalPrim Cps.Div [Int _, Int 0] _ = doRaise $ divExn ?args
 evalPrim Cps.Div [Int i, Int j] [c] = overflow (i `quot` j) c
-evalPrim Cps.Minus [Int i] [c] = overflow (negate i) c
+evalPrim Cps.Negate [Int i] [c] = overflow (negate i) c
 evalPrim Cps.Lt [Int i, Int j] [t, f] = if i < j then t [] else f []
 evalPrim Cps.Leq [Int i, Int j] [t, f] = if j < i then f [] else t []
 evalPrim Cps.Gt [Int i, Int j] [t, f] = if j < i then t [] else f []
