@@ -30,15 +30,30 @@ data SemanticsArgs loc answer m = SemanticsArgs
 
 type Store loc answer m = (loc, loc -> DValue loc answer m, loc -> Int)
 
+type Constr loc answer m =
+  (Num loc, Eq loc, Show loc, ?args :: SemanticsArgs loc answer m, Monad m)
+
+newtype Func loc answer m = Func'
+  {runFunc :: [DValue loc answer m] -> Store loc answer m -> m answer}
+
+instance Show (Func loc answer m) where
+  show _ = "Function"
+
 data DValue loc answer m
   = Record [DValue loc answer m] Int
   | Int Int
   | Real Double
-  | Func ([DValue loc answer m] -> Store loc answer m -> m answer)
+  | Func (Func loc answer m)
   | String T.Text
   | Bytearray [loc]
   | Array [loc]
   | Uarray [loc]
+  deriving (Show)
+
+mkFunc ::
+  ([DValue loc answer m] -> Store loc answer m -> m answer) ->
+  DValue loc answer m
+mkFunc = Func . Func'
 
 fetch :: Store loc answer m -> loc -> DValue loc answer m
 fetch (_, f, _) = f
@@ -91,7 +106,7 @@ doRaise ::
   Store loc answer m ->
   m answer
 doRaise exn s = case fetch s (handlerRef ?args) of
-  Func f -> f [exn] s
+  Func f -> runFunc f [exn] s
   _ -> error "doRaise: fetching the handler should return Func"
 
 overflow ::
@@ -141,7 +156,7 @@ evalPath (Record l i) (Cps.Selp j p) = evalPath (l !! (i + j)) p
 evalPath _ _ = error "evalPath: invalid pattern"
 
 evalPrim ::
-  (Num loc, Eq loc, ?args :: SemanticsArgs loc answer m, Monad m) =>
+  Constr loc answer m =>
   Cps.Primop ->
   [DValue loc answer m] ->
   [[DValue loc answer m] -> Store loc answer m -> m answer] ->
@@ -194,6 +209,7 @@ evalPrim Cps.Alength [Array a] [c] = c [Int (length a)]
 evalPrim Cps.Alength [Uarray a] [c] = c [Int (length a)]
 evalPrim Cps.Slength [Bytearray a] [c] = c [Int (length a)]
 evalPrim Cps.Slength [String a] [c] = c [Int (T.length a)]
+evalPrim Cps.Sequals [String a, String b] [t, f] = if a == b then t [] else f []
 evalPrim Cps.Gethdlr [] [c] = \s -> c [fetch s (handlerRef ?args)] s
 evalPrim Cps.Sethdlr [h] [c] = \s -> c [] (upd s (handlerRef ?args) h)
 evalPrim Cps.Fadd [Real a, Real b] [c] = overflowr (a + b) c
@@ -207,10 +223,11 @@ evalPrim Cps.Flt [Real i, Real j] [t, f] = if i < j then t [] else f []
 evalPrim Cps.Fle [Real i, Real j] [t, f] = if j < i then f [] else t []
 evalPrim Cps.Fgt [Real i, Real j] [t, f] = if j < i then t [] else f []
 evalPrim Cps.Fge [Real i, Real j] [t, f] = if i < j then f [] else t []
-evalPrim p _ _ = error $ "evalPrim: invalid pattern " ++ show p
+evalPrim p args _ =
+  error $ "evalPrim: invalid pattern " ++ show p ++ " and args: " ++ show args
 
 denotExpr ::
-  (?args :: SemanticsArgs loc answer m, Num loc, Eq loc, Monad m) =>
+  Constr loc answer m =>
   (Cps.Var -> DValue loc answer m) ->
   Cps.Cexp ->
   Store loc answer m ->
@@ -220,7 +237,7 @@ denotExpr env (Cps.Select i (convertValue env -> Record l j) w e) =
 denotExpr env (Cps.Offset i (convertValue env -> Record l j) w e) =
   denotExpr (bind env w (Record l (i + j))) e
 denotExpr env (Cps.App (convertValue env -> Func g) vl) =
-  g (fmap (convertValue env) vl)
+  runFunc g (fmap (convertValue env) vl)
 denotExpr env (Cps.Record vl w e) =
   denotExpr (bind env w (Record (fmap fetchField vl) 0)) e
   where
@@ -234,7 +251,7 @@ denotExpr env (Cps.Primop p vl wl el) =
     (fmap (\e al -> denotExpr (bindn env wl al) e) el)
 denotExpr env (Cps.Fix fl e) = denotExpr (g env) e
   where
-    h r1 (_, vl, b) = Func $ \al -> denotExpr (bindn (g r1) vl al) b
+    h r1 (_, vl, b) = mkFunc $ \al -> denotExpr (bindn (g r1) vl al) b
     g r = bindn r (fmap (\(n, _, _) -> n) fl) (fmap (h r) fl)
 denotExpr _ p = error $ "denotExpr: invalid pattern" ++ show p
 
@@ -244,9 +261,7 @@ type Eval loc answer m =
 env0 :: Env loc answer m
 env0 _ = throw Undefined
 
-cps ::
-  (?args :: SemanticsArgs loc answer m, Num loc, Eq loc, Monad m) =>
-  Eval loc answer m
+cps :: Constr loc answer m => Eval loc answer m
 cps vl dl = denotExpr (bindn env0 vl dl)
 
 withArgs ::
@@ -262,4 +277,4 @@ initialStore next handler =
   upd
     (next, \_ -> throw Undefined, \_ -> throw Undefined)
     (handlerRef ?args)
-    (Func handler)
+    (mkFunc handler)

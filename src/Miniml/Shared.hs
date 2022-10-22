@@ -31,6 +31,7 @@ data Primop
   | MakerefUnboxed
   | Alength
   | Slength
+  | Sequals
   | Gethdlr
   | Sethdlr
   | Boxed

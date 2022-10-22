@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
@@ -8,7 +9,10 @@ import Control.Monad (replicateM)
 import Control.Monad.Cont (ContT (ContT, runContT))
 import Control.Monad.State.Strict (MonadState, State)
 import Data.Char (ord)
+import Data.Foldable (foldlM)
 import Data.Functor.Foldable.TH (makeBaseFunctor)
+import Data.List (sortOn)
+import Data.List.Extra (groupOn)
 import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.Generics (Generic)
@@ -42,7 +46,7 @@ data PrimopResult = OneResult | NoResult | Branching
 primopResultType :: Primop -> PrimopResult
 primopResultType op
   | op `elem` [Sethdlr, Store, Assign, Update, UnboxedAssign, UnboxedUpdate] = NoResult
-  | op `elem` [Ieql, Ineq, Lt, Leq, Gt, Geq, Feql, Fneq, Fge, Fgt, Fle, Flt, Rangechk, Boxed] = Branching
+  | op `elem` [Ieql, Ineq, Lt, Leq, Gt, Geq, Feql, Fneq, Fge, Fgt, Fle, Flt, Sequals, Rangechk, Boxed] = Branching
   | otherwise = OneResult
 
 primopNumArgs :: Primop -> Int
@@ -158,13 +162,45 @@ convert lexp = unConvertM $ do
       error $ "Decon cannot be applied to Constant " ++ show i
     go (L.Switch e l [a@(L.DataCon (L.Constant 0), _), b@(L.DataCon (L.Constant 1), _)] Nothing) =
       go (L.Switch e l [b, a] Nothing)
-    go (L.Switch u _ l _) = do
+    go (L.Switch u _ cases@(con : _) defaultCase) = do
       u' <- go u
       (k, x) <- liftA2 (,) fresh fresh
-      let g (_, le) = runContT (go le) (\z -> pure (App (Var k) [z]))
+      let g le = runContT (go le) (\z -> pure (App (Var k) [z]))
       ContT $ \c -> do
         kf <- (k,[x],) <$> c (Var x)
-        Fix [kf] . Switch u' <$> traverse g l
+        initCase <- case defaultCase of
+          Just e -> g e
+          Nothing ->
+            (\h -> Primop Gethdlr [] [h] [App (Var h) [String "Invalid case"]])
+              <$> fresh
+        case con of
+          (L.IntCon _, _) ->
+            let unInt (L.IntCon i, e) = (i, e)
+                unInt _ = error "Expected integer constructor"
+                cases' = sortOn fst $ fmap unInt cases
+                addCase acc (i, e) =
+                  (\e' -> Primop Ieql [u', Int i] [] [e', acc]) <$> g e
+             in Fix [kf] <$> foldlM addCase initCase cases'
+          (L.RealCon _, _) ->
+            let addCase acc (L.RealCon r, e) =
+                  (\e' -> Primop Feql [u', Real r] [] [e', acc]) <$> g e
+                addCase _ _ = error "Expected real constructor"
+             in Fix [kf] <$> foldlM addCase initCase cases
+          (L.StringCon _, _) -> do
+            slen <- fresh
+            let unString (L.StringCon s, e) = (T.length s, (s, e))
+                unString _ = error "Expected string constructor"
+                cases' = groupOn fst $ sortOn fst $ fmap unString cases
+                addCase acc (s, e) =
+                  (\e' -> Primop Sequals [u', String s] [] [e', acc]) <$> g e
+                addGroup acc cs@((i, _) : _) =
+                  (\e' -> Primop Ieql [Var slen, Int i] [] [e', acc])
+                    <$> foldlM addCase initCase (fmap snd cs)
+                addGroup acc [] = pure acc
+            Fix [kf] . Primop Slength [u'] [slen] . (: [])
+              <$> foldlM addGroup initCase cases'
+          (con', _) -> error $ "Error con: " ++ show con'
+    go (L.Switch _ _ [] _) = error "Empty switch"
     go (L.Handle a b) = ContT $ \c -> do
       [h, k, n, x, e] <- replicateM 5 fresh
       kf <- (k,[x],) <$> c (Var x)

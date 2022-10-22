@@ -15,12 +15,14 @@ data Conrep
   | Ref
   | Variable Var Access
   | VariableC Var Access
+  deriving (Show)
 
 data Con
   = DataCon Conrep
   | IntCon Int
   | RealCon Text
   | StringCon Text
+  deriving (Show)
 
 data Lexp
   = Var Var
