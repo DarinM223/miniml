@@ -73,9 +73,6 @@ field :: Value -> Access -> State GatherState ()
 field v (Selp i _) = select v i
 field v _ = escape v
 
-click :: State GatherState ()
-click = #clicks %= (+ 1)
-
 checkFlatten :: Int -> (Var, [Var], Cexp) -> State GatherState ()
 checkFlatten maxRegs (f, vl, _) = do
   usageInfo <- use #usageInfo
@@ -96,7 +93,7 @@ checkFlatten maxRegs (f, vl, _) = do
       when (any flattened arity') $ do
         f' <- zoom #counter fresh
         fnInfo % #alias ?= f'
-        click
+        #clicks %= (+ 1)
     _ -> pure ()
   where
     flattened (Count _ _) = True
@@ -107,7 +104,6 @@ gatherInfo maxRegs e0 = state $ \(!tmp) ->
   let GatherState !i !tmp' !clk = execState (go e0) (GatherState IM.empty tmp 0)
    in ((clk, i), tmp')
   where
-    go :: Cexp -> State GatherState ()
     go (Record vl w e) =
       enter w (RecordInfo (length vl)) >> traverse_ (uncurry field) vl >> go e
     go (Select i v _ e) = select v i >> go e

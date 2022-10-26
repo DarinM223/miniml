@@ -6,7 +6,7 @@ module Miniml.Optimization.Contract (gatherInfo, reduce) where
 
 import Control.Applicative (liftA2)
 import Control.Monad (filterM, when)
-import Control.Monad.Extra (ifM, notM)
+import Control.Monad.Extra (ifM, notM, unlessM)
 import Control.Monad.State.Strict (State, execState, gets, modify', runState)
 import Data.Foldable (for_, traverse_)
 import Data.Functor (($>), (<&>))
@@ -28,14 +28,14 @@ data Info = Info
     -- | number of times a variable has been referred to
     used :: {-# UNPACK #-} !Int
   }
-  deriving (Generic)
+  deriving (Show, Generic)
 
 data SpecificInfo
   = FunctionInfo {-# UNPACK #-} !FunctionInfo'
   | RecordInfo [(Value, Access)]
   | SelectInfo {-# UNPACK #-} !SelectInfo'
   | NoSpecificInfo
-  deriving (Generic)
+  deriving (Show, Generic)
 
 data FunctionInfo' = FunctionInfo'
   { formalParams :: [Var],
@@ -44,16 +44,18 @@ data FunctionInfo' = FunctionInfo'
     -- | True if function has not been marked as irreducible by other phases
     reducible :: !Bool
   }
-  deriving (Generic)
+  deriving (Show, Generic)
 
 data SelectInfo' = SelectInfo'
   { record :: {-# UNPACK #-} !Var,
     offset :: {-# UNPACK #-} !Int
   }
-  deriving (Generic)
+  deriving (Show, Generic)
 
 use :: Value -> State ContractInfo ()
-use (Var v) = at' v % _Just % #used %= (+ 1)
+use (Var v) = do
+  unlessM (gets (IM.member v)) $ enterSimple v
+  at' v % _Just % #used %= (+ 1)
 use (Label v) = use (Var v)
 use _ = pure ()
 
@@ -73,7 +75,6 @@ enterSimple v = enter v NoSpecificInfo
 gatherInfo :: IS.IntSet -> Cexp -> ContractInfo
 gatherInfo irreducible = flip execState IM.empty . go
   where
-    go :: Cexp -> State ContractInfo ()
     go (Fix fns rest) = do
       for_ fns $ \(fn, params, e) -> do
         traverse_ enterSimple params
@@ -98,20 +99,35 @@ gatherInfo irreducible = flip execState IM.empty . go
 
 type Env = IM.IntMap Value
 
--- | A `Var` can refer to another `Var`, and so on and so forth.
--- `rename` follows the chain of `Var` and `Label` links to get
--- the root value of a variable name.
-rename' :: Env -> Value -> Value
-rename' env (Var v) | Just v' <- IM.lookup v env = rename' env v'
-rename' env (Label v) | Just v' <- IM.lookup v env = rename' env v'
-rename' _ v = v
-
 data ContractState = ContractState
   { env :: !Env,
     info :: !ContractInfo,
     clicks :: {-# UNPACK #-} !Int
   }
   deriving (Generic)
+
+click :: State ContractState ()
+click = zoom #clicks $ modify' (+ 1)
+
+-- | A `Var` can refer to another `Var`, and so on and so forth.
+-- `rename` follows the chain of `Var` and `Label` links to get
+-- the root value of a variable name.
+rename :: Value -> State ContractState Value
+rename = zoom #env . gets . flip go
+  where
+    go env (Var v) | Just v' <- IM.lookup v env = go env v'
+    go env (Label v) | Just v' <- IM.lookup v env = go env v'
+    go _ v = v
+
+newname :: Var -> Value -> State ContractState ()
+newname k v = zoom #env $ modify' $ IM.insert k v
+
+used :: Var -> State ContractState Bool
+used v = zoom #info $ gets $ \m -> m IM.! v ^. #used > 0
+
+lookupInfo :: Value -> State ContractState Info
+lookupInfo (Var v) = zoom #info $ gets $ \m -> m IM.! v
+lookupInfo _ = error "Invalid value"
 
 reduce :: Env -> ContractInfo -> Cexp -> (Int, Cexp)
 reduce env0 info0 e0 =
@@ -120,22 +136,6 @@ reduce env0 info0 e0 =
           cata go e0 >>= traverseOf (types @Value) rename
    in (s ^. #clicks, e0')
   where
-    click :: State ContractState ()
-    click = zoom #clicks $ modify' (+ 1)
-
-    rename :: Value -> State ContractState Value
-    rename = zoom #env . gets . flip rename'
-
-    newname :: Var -> Value -> State ContractState ()
-    newname k v = zoom #env $ modify' $ IM.insert k v
-
-    used :: Var -> State ContractState Bool
-    used v = zoom #info $ gets $ \m -> m IM.! v ^. #used > 0
-
-    lookupInfo :: Value -> State ContractState Info
-    lookupInfo (Var v) = zoom #info $ gets $ \m -> m IM.! v
-    lookupInfo _ = error "Invalid value"
-
     go :: CexpF (State ContractState Cexp) -> State ContractState Cexp
     go (SelectF i v w e) =
       ifM
@@ -176,7 +176,7 @@ reduce env0 info0 e0 =
           pure body
         Info (FunctionInfo (FunctionInfo' ps _ _ _)) _ ->
           fmap (App f . fmap snd) . filterM (used . fst) $ zip ps vs
-        _ -> error "Applying variable that is not a function"
+        _ -> pure $ App f vs
     go (RecordF paths v a) =
       ifM
         (notM (used v))

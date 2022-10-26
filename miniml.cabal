@@ -75,9 +75,11 @@ test-suite miniml-test
     hs-source-dirs:   test
     main-is:          MinimlTest.hs
     other-modules:    CpsConvert
+                    , Optimization.Contract
                     , Semantic
     build-depends:    base ^>=4.16
                     , miniml
+                    , containers
                     , extra
                     , mtl
                     , random
