@@ -31,13 +31,13 @@ data Info = Info
   deriving (Show, Generic)
 
 data SpecificInfo
-  = FunctionInfo {-# UNPACK #-} !FunctionInfo'
+  = FunctionInfo {-# UNPACK #-} !FunctionInfo
   | RecordInfo [(Value, Access)]
-  | SelectInfo {-# UNPACK #-} !SelectInfo'
+  | SelectInfo {-# UNPACK #-} !SelectInfo
   | NoSpecificInfo
   deriving (Show, Generic)
 
-data FunctionInfo' = FunctionInfo'
+data FunctionInfo = F
   { formalParams :: [Var],
     body :: !Cexp,
     calls :: {-# UNPACK #-} !Int,
@@ -46,7 +46,7 @@ data FunctionInfo' = FunctionInfo'
   }
   deriving (Show, Generic)
 
-data SelectInfo' = SelectInfo'
+data SelectInfo = S
   { record :: {-# UNPACK #-} !Var,
     offset :: {-# UNPACK #-} !Int
   }
@@ -78,9 +78,8 @@ gatherInfo irreducible = flip execState IM.empty . go
     go (Fix fns rest) = do
       for_ fns $ \(fn, params, e) -> do
         traverse_ enterSimple params
-        enter fn $
-          FunctionInfo $
-            FunctionInfo' params e 0 (not (IS.member fn irreducible))
+        enter fn $ FunctionInfo $ F params e 0 (not (IS.member fn irreducible))
+        go e
       go rest
     go (Record fields v rest) = do
       traverse_ (use . fst) fields
@@ -90,7 +89,7 @@ gatherInfo irreducible = flip execState IM.empty . go
     go (App f vs) = call f >> traverse_ use vs
     go (Select off (Var r) v rest) = do
       use (Var r)
-      enter v $ SelectInfo $ SelectInfo' r off
+      enter v $ SelectInfo $ S r off
       go rest
     go Select {} = error "Must select off of record variable"
     go (Switch p branches) = use p >> traverse_ go branches
@@ -107,7 +106,7 @@ data ContractState = ContractState
   deriving (Generic)
 
 click :: State ContractState ()
-click = zoom #clicks $ modify' (+ 1)
+click = #clicks %= (+ 1)
 
 -- | A `Var` can refer to another `Var`, and so on and so forth.
 -- `rename` follows the chain of `Var` and `Label` links to get
@@ -120,7 +119,7 @@ rename = zoom #env . gets . flip go
     go _ v = v
 
 newname :: Var -> Value -> State ContractState ()
-newname k v = zoom #env $ modify' $ IM.insert k v
+newname k v = #env %= IM.insert k v
 
 used :: Var -> State ContractState Bool
 used v = zoom #info $ gets $ \m -> m IM.! v ^. #used > 0
@@ -156,26 +155,30 @@ reduce env0 info0 e0 =
       when (length fns' /= length fns) click
       if null fns' then rest else embed <$> sequence (FixF fns' rest)
       where
-        removeUnusedParams (f, ps, r) = do
-          ps' <- filterM used ps
-          when (length ps' /= length ps) click
-          pure (f, ps', r)
+        removeUnusedParams (f, ps, r) =
+          lookupInfo (Var f) >>= \case
+            -- Function doesn't escape.
+            Info (FunctionInfo (F _ _ calls _)) uses | uses == calls -> do
+              ps' <- filterM used ps
+              when (length ps' /= length ps) click
+              pure (f, ps', r)
+            _ -> pure (f, ps, r)
         canBeDropped (f, _, _) =
           lookupInfo (Var f) <&> \case
             -- Filter all used == 1 && called == 1 too.
-            Info (FunctionInfo (FunctionInfo' _ _ 1 True)) 1 -> True
+            Info (FunctionInfo (F _ _ 1 True)) 1 -> True
             Info _ 0 -> True
             _ -> False
     -- If f's used == 1 && called == 1 then replace with function body.
     go (AppF f vs) = do
       rename f >>= lookupInfo >>= \case
-        Info (FunctionInfo (FunctionInfo' ps body 1 True)) 1 -> do
-          click
+        Info (FunctionInfo (F ps body 1 True)) 1 -> do
           vs' <- traverse rename vs
           traverse_ (uncurry newname) =<< filterM (used . fst) (zip ps vs')
           pure body
-        Info (FunctionInfo (FunctionInfo' ps _ _ _)) _ ->
-          fmap (App f . fmap snd) . filterM (used . fst) $ zip ps vs
+        Info (FunctionInfo (F ps _ calls _)) uses
+          | uses == calls ->
+              fmap (App f . fmap snd) . filterM (used . fst) $ zip ps vs
         _ -> pure $ App f vs
     go (RecordF paths v a) =
       ifM
@@ -185,7 +188,7 @@ reduce env0 info0 e0 =
       where
         rewritePaths (w, p) =
           rename w >>= lookupInfo >>= \case
-            Info (SelectInfo (SelectInfo' v' i)) _ ->
+            Info (SelectInfo (S v' i)) _ ->
               click $> (Var v', Selp i p)
             _ -> pure (w, p)
     go e@(PrimopF Negate [p] [v] [r]) =
