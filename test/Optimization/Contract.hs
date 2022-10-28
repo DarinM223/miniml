@@ -4,7 +4,7 @@ import Data.IntMap.Strict qualified as IM
 import Data.IntSet qualified as IS
 import Miniml.Cps qualified as Cps
 import Miniml.Optimization.Contract (gatherInfo, reduce)
-import Miniml.Shared (Primop (Plus, Times))
+import Miniml.Shared (Access (Offp, Selp), Primop (..))
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, (@?=))
 
@@ -19,7 +19,12 @@ tests =
       testCase "Removes unused arguments" testRemoveArgs,
       testCase
         "Doesn't remove unused arguments if function escapes"
-        testNoRemoveArgsEscape
+        testNoRemoveArgsEscape,
+      testCase "Record optimizations" testRecordOptimizeSelectPaths,
+      testCase "Constant folding arithmetic" testConstFoldArithmetic,
+      testCase "Constant folding comparison" testConstFoldCompare,
+      testCase "Selection from known record flat" testSelectKnownFlat,
+      testCase "Selection from known record nested" testSelectKnownNested
     ]
 
 testConstSwitch :: IO ()
@@ -155,3 +160,170 @@ testNoRemoveArgsEscape = do
       (clicks, e') = reduce IM.empty info e
   clicks @?= 0
   e' @?= e
+
+testRecordOptimizeSelectPaths :: IO ()
+testRecordOptimizeSelectPaths = do
+  let e =
+        Cps.Select
+          7
+          (Cps.Var 1)
+          2
+          ( Cps.Select
+              3
+              (Cps.Var 2)
+              3
+              ( Cps.Record
+                  [(Cps.Var 3, Offp 0)]
+                  4
+                  (Cps.App (Cps.Var 0) [Cps.Var 4])
+              )
+          )
+      e' = iterate (snd . (reduce IM.empty =<< gatherInfo IS.empty)) e !! 3
+  e'
+    @?= Cps.Record
+      [(Cps.Var 1, Selp 7 (Selp 3 (Offp 0)))]
+      4
+      (Cps.App (Cps.Var 0) [Cps.Var 4])
+
+testConstFoldArithmetic :: IO ()
+testConstFoldArithmetic = do
+  let e =
+        Cps.Primop
+          Plus
+          [Cps.Int 1, Cps.Int 3]
+          [1]
+          [ Cps.Primop
+              Times
+              [Cps.Var 1, Cps.Int 5]
+              [2]
+              [ Cps.Primop
+                  Minus
+                  [Cps.Int 2, Cps.Var 2]
+                  [3]
+                  [ Cps.Primop
+                      Negate
+                      [Cps.Var 3]
+                      [4]
+                      [Cps.App (Cps.Var 0) [Cps.Var 4]]
+                  ]
+              ]
+          ]
+      info = gatherInfo IS.empty e
+      (clicks, e') = reduce IM.empty info e
+  clicks @?= 4
+  e' @?= Cps.App (Cps.Var 0) [Cps.Int 18]
+
+testConstFoldCompare :: IO ()
+testConstFoldCompare = do
+  let e =
+        Cps.Primop
+          Gt
+          [Cps.Int 1, Cps.Int 3]
+          []
+          [ Cps.App (Cps.Var 0) [Cps.Int 1],
+            Cps.Primop
+              Lt
+              [Cps.Int 1, Cps.Int 3]
+              []
+              [ Cps.Primop
+                  Leq
+                  [Cps.Int 2, Cps.Int 2]
+                  []
+                  [ Cps.Primop
+                      Geq
+                      [Cps.Int 5, Cps.Int 4]
+                      []
+                      [ Cps.Primop
+                          Ieql
+                          [Cps.Int 6, Cps.Int 6]
+                          []
+                          [ Cps.Primop
+                              Ineq
+                              [Cps.Int 7, Cps.Int 7]
+                              []
+                              [ Cps.App (Cps.Var 0) [Cps.Int 6],
+                                Cps.App (Cps.Var 0) [Cps.Int 7]
+                              ],
+                            Cps.App (Cps.Var 0) [Cps.Int 5]
+                          ],
+                        Cps.App (Cps.Var 0) [Cps.Int 4]
+                      ],
+                    Cps.App (Cps.Var 0) [Cps.Int 3]
+                  ],
+                Cps.App (Cps.Var 0) [Cps.Int 2]
+              ]
+          ]
+      info = gatherInfo IS.empty e
+      (clicks, e') = reduce IM.empty info e
+  clicks @?= 6
+  e' @?= Cps.App (Cps.Var 0) [Cps.Int 7]
+
+testSelectKnownFlat :: IO ()
+testSelectKnownFlat = do
+  let e =
+        Cps.Primop
+          Plus
+          [Cps.Var 1, Cps.Var 2]
+          [3]
+          [ Cps.Record
+              [(Cps.Int 1, Offp 0), (Cps.Var 3, Offp 0)]
+              4
+              ( Cps.Select
+                  0
+                  (Cps.Var 4)
+                  5
+                  ( Cps.Select
+                      1
+                      (Cps.Var 4)
+                      6
+                      ( Cps.Primop
+                          Plus
+                          [Cps.Var 5, Cps.Var 6]
+                          [7]
+                          [Cps.App (Cps.Var 0) [Cps.Var 7]]
+                      )
+                  )
+              )
+          ]
+      info = gatherInfo IS.empty e
+      (clicks, e') = reduce IM.empty info e
+  clicks @?= 2
+  e'
+    @?= Cps.Primop
+      Plus
+      [Cps.Var 1, Cps.Var 2]
+      [3]
+      [ Cps.Record
+          [(Cps.Int 1, Offp 0), (Cps.Var 3, Offp 0)]
+          4
+          ( Cps.Primop
+              Plus
+              [Cps.Int 1, Cps.Var 3]
+              [7]
+              [Cps.App (Cps.Var 0) [Cps.Var 7]]
+          )
+      ]
+
+testSelectKnownNested :: IO ()
+testSelectKnownNested = do
+  let e =
+        Cps.Record
+          [(Cps.Int 1, Offp 0), (Cps.Var 1, Offp 0)]
+          2
+          ( Cps.Record
+              [(Cps.Var 3, Offp 0), (Cps.Var 2, Offp 0)]
+              4
+              ( Cps.Record
+                  [(Cps.Var 4, Selp 1 (Selp 0 (Offp 0)))]
+                  5
+                  ( Cps.Select
+                      0
+                      (Cps.Var 5)
+                      6
+                      (Cps.App (Cps.Var 0) [Cps.Var 6])
+                  )
+              )
+          )
+      info = gatherInfo IS.empty e
+      (_, e') = reduce IM.empty info e
+  e' @?= Cps.App (Cps.Var 0) [Cps.Int 1]

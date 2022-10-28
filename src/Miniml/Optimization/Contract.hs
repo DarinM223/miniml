@@ -126,7 +126,7 @@ used v = zoom #info $ gets $ \m -> m IM.! v ^. #used > 0
 
 lookupInfo :: Value -> State ContractState Info
 lookupInfo (Var v) = zoom #info $ gets $ \m -> m IM.! v
-lookupInfo _ = error "Invalid value"
+lookupInfo v = error $ "Invalid value: " ++ show v
 
 reduce :: Env -> ContractInfo -> Cexp -> (Int, Cexp)
 reduce env0 info0 e0 =
@@ -186,11 +186,12 @@ reduce env0 info0 e0 =
         (click >> a)
         (Record <$> traverse rewritePaths paths <*> pure v <*> a)
       where
-        rewritePaths (w, p) =
-          rename w >>= lookupInfo >>= \case
+        rewritePaths (Var w, p) =
+          rename (Var w) >>= lookupInfo >>= \case
             Info (SelectInfo (S v' i)) _ ->
               click $> (Var v', Selp i p)
-            _ -> pure (w, p)
+            _ -> pure (Var w, p)
+        rewritePaths path = pure path
     go e@(PrimopF Negate [p] [v] [r]) =
       ifM
         (notM (used v))
@@ -219,6 +220,15 @@ reduce env0 info0 e0 =
             _ -> embed <$> sequence e
       where
         const' n x = click >> when (n > 0) (newname v x) >> r
+    go e@(PrimopF op [a, b] [] [t, f]) =
+      liftA2 (op,,) (rename a) (rename b) >>= \case
+        (Ieql, Int i, Int j) -> click >> if i == j then t else f
+        (Ineq, Int i, Int j) -> click >> if i /= j then t else f
+        (Lt, Int i, Int j) -> click >> if i < j then t else f
+        (Leq, Int i, Int j) -> click >> if i <= j then t else f
+        (Gt, Int i, Int j) -> click >> if i > j then t else f
+        (Geq, Int i, Int j) -> click >> if i >= j then t else f
+        _ -> embed <$> sequence e
     go e@(PrimopF _ _ [v] [a]) =
       ifM (notM (used v)) (click >> a) (embed <$> sequence e)
     go e = embed <$> sequence e

@@ -117,7 +117,7 @@ convert lexp = unConvertM $ do
         (w, k, x) <- liftA3 (,,) fresh fresh fresh
         ContT $ \c -> do
           kf <- (k,[x],) <$> c (Var x)
-          pure $ Fix [kf] (Primop i a [w] [App (Var k) [Int 0], App (Var k) [Int 1]])
+          pure $ Fix [kf] (Primop i a [w] [App (Var k) [Int 1], App (Var k) [Int 0]])
     go (L.Fn v e) = do
       z <- go e
       (f, k) <- liftA2 (,) fresh fresh

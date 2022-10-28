@@ -60,10 +60,8 @@ testPrimop1 = Semantics.withArgs args $ do
               )
           )
           [L.Constant 0, L.Constant 1]
-          [ (L.IntCon 0, L.String "yes"),
-            (L.IntCon 1, L.String "no")
-          ]
-          Nothing
+          [(L.IntCon 0, L.String "no")]
+          (Just (L.String "yes"))
       ((k, e'), c) = runState (Cps.convert e) (-1)
       semantics = Semantics.cps [k] [mkFunc resultString] e'
       store = Semantics.initialStore c defaultHandler
@@ -88,20 +86,10 @@ testPrimop1 = Semantics.withArgs args $ do
                         [(7, [8], Cps.App (Cps.Var k) [Cps.Var 8])]
                         ( Cps.Primop
                             Ieql
-                            [Cps.Var 6, Cps.Int 1]
+                            [Cps.Var 6, Cps.Int 0]
                             []
                             [ Cps.App (Cps.Var 7) [Cps.String "no"],
-                              Cps.Primop
-                                Ieql
-                                [Cps.Var 6, Cps.Int 0]
-                                []
-                                [ Cps.App (Cps.Var 7) [Cps.String "yes"],
-                                  Cps.Primop
-                                    Gethdlr
-                                    []
-                                    [9]
-                                    [Cps.App (Cps.Var 9) [Cps.String "Invalid case"]]
-                                ]
+                              Cps.App (Cps.Var 7) [Cps.String "yes"]
                             ]
                         )
                     )
@@ -110,8 +98,8 @@ testPrimop1 = Semantics.withArgs args $ do
                       Ieql
                       [Cps.Var 3, Cps.Int 3]
                       [4]
-                      [ Cps.App (Cps.Var 5) [Cps.Int 0],
-                        Cps.App (Cps.Var 5) [Cps.Int 1]
+                      [ Cps.App (Cps.Var 5) [Cps.Int 1],
+                        Cps.App (Cps.Var 5) [Cps.Int 0]
                       ]
                   )
               ]
