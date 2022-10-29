@@ -31,6 +31,7 @@ data Arity
       -- False if at all function calls this parameter was a known record.
   | -- | Cannot flatten this argument. Cannot be updated.
     Top
+  deriving (Show)
 
 data Info
   = FunctionInfo !FunctionInfo
@@ -38,14 +39,14 @@ data Info
     ArgumentInfo {-# UNPACK #-} !Int
   | -- | Number of fields
     RecordInfo {-# UNPACK #-} !Int
-  deriving (Generic)
+  deriving (Show, Generic)
 
 data FunctionInfo = F
   { arity :: [Arity],
     alias :: Maybe Var,
     escape :: !Bool
   }
-  deriving (Generic)
+  deriving (Show, Generic)
 
 type UsageInfo = IM.IntMap Info
 
@@ -162,7 +163,7 @@ reduce usage = go
         processArgs [] = pure []
         processArgs ((f, vs, body) : rest)
           | Just (FunctionInfo (F as (Just f') _)) <- IM.lookup f usage = do
-              (vs', body') <- foldlM newArgs ([], body) $ zip as vs
+              (vf, body') <- foldlM newArgs (id, body) $ zip as vs
               ws <- traverse (const fresh) vs
               -- Adds the function with flattened arguments, `f'`, and rewrites
               -- `f` to call `f'` so that it can still work if `f` escapes.
@@ -170,14 +171,14 @@ reduce usage = go
               -- body of `f` hasn't been reduced yet. After being reduced, it
               -- will be rewritten to call `f'` with the flattened arguments.
               let fdef = (f, ws, App (Var f) (Var <$> ws))
-                  fdef' = (f', vs', body')
+                  fdef' = (f', vf [], body')
               (fdef :) . (fdef' :) <$> processArgs rest
         processArgs (fdef : rest) = (fdef :) <$> processArgs rest
 
-        newArgs (vl, body) (Count j _, v) = do
+        newArgs (vf, body) (Count j _, v) = do
           new <- replicateM j fresh
           -- Pack the flattened arguments back into a record inside the body.
           -- The contraction phase will remove unnecessary packing and selecting.
-          pure (new ++ vl, Record ((,Offp 0) . Var <$> new) v body)
-        newArgs (vl, body) (_, v) = pure (v : vl, body)
+          pure (vf . (new ++), Record ((,Offp 0) . Var <$> new) v body)
+        newArgs (vf, body) (_, v) = pure (vf . (v :), body)
     go e = embed <$> traverse go (project e)

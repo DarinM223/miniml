@@ -1,5 +1,6 @@
 import CpsConvert qualified
 import Optimization.Contract qualified as Contract
+import Optimization.Flatten qualified as Flatten
 import Test.Tasty (TestTree, defaultMain, testGroup)
 
 main :: IO ()
@@ -10,5 +11,6 @@ tests =
   testGroup
     "Tests"
     [ CpsConvert.tests,
-      Contract.tests
+      Contract.tests,
+      Flatten.tests
     ]

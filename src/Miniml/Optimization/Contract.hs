@@ -82,7 +82,7 @@ gatherInfo irreducible = flip execState IM.empty . go
       for_ fns $ \(fn, params, e) -> do
         traverse_ enterSimple params
         enter fn $ FunctionInfo $ F params e 0 (not (IS.member fn irreducible)) False
-        go e
+      traverse_ (\(_, _, e) -> go e) fns
       go rest
       for_ fns $ \(fn, _, _) -> do
         -- Handle functions that are if idiom functions.

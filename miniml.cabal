@@ -76,6 +76,7 @@ test-suite miniml-test
     main-is:          MinimlTest.hs
     other-modules:    CpsConvert
                     , Optimization.Contract
+                    , Optimization.Flatten
                     , Semantic
     build-depends:    base ^>=4.16
                     , miniml
