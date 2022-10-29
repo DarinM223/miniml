@@ -24,7 +24,8 @@ tests =
       testCase "Constant folding arithmetic" testConstFoldArithmetic,
       testCase "Constant folding comparison" testConstFoldCompare,
       testCase "Selection from known record flat" testSelectKnownFlat,
-      testCase "Selection from known record nested" testSelectKnownNested
+      testCase "Selection from known record nested" testSelectKnownNested,
+      testCase "Boolean idiom simplification" testIfIdiom
     ]
 
 testConstSwitch :: IO ()
@@ -72,7 +73,7 @@ testSimpleContract = do
           (Cps.App (Cps.Var 2) [Cps.Var 8, Cps.Var 9, Cps.Var 1])
       info = gatherInfo IS.empty e
       (clicks, e') = reduce IM.empty info e
-  show info @?= "fromList [(1,Info {specific = NoSpecificInfo, used = 1}),(2,Info {specific = FunctionInfo (F {formalParams = [3,4,7], body = Primop Times [Var 3,Var 4] [5] [Primop Plus [Var 5,Var 3] [6] [App (Var 7) [Var 6]]], calls = 1, reducible = True}), used = 1}),(3,Info {specific = NoSpecificInfo, used = 2}),(4,Info {specific = NoSpecificInfo, used = 1}),(5,Info {specific = NoSpecificInfo, used = 1}),(6,Info {specific = NoSpecificInfo, used = 1}),(7,Info {specific = NoSpecificInfo, used = 1}),(8,Info {specific = NoSpecificInfo, used = 1}),(9,Info {specific = NoSpecificInfo, used = 1})]"
+  show info @?= "fromList [(1,Info {specific = NoSpecificInfo, used = 1}),(2,Info {specific = FunctionInfo (F {formalParams = [3,4,7], body = Primop Times [Var 3,Var 4] [5] [Primop Plus [Var 5,Var 3] [6] [App (Var 7) [Var 6]]], calls = 1, reducible = True, specialUse = False}), used = 1}),(3,Info {specific = NoSpecificInfo, used = 2}),(4,Info {specific = NoSpecificInfo, used = 1}),(5,Info {specific = NoSpecificInfo, used = 1}),(6,Info {specific = NoSpecificInfo, used = 1}),(7,Info {specific = NoSpecificInfo, used = 1}),(8,Info {specific = NoSpecificInfo, used = 1}),(9,Info {specific = NoSpecificInfo, used = 1})]"
   clicks @?= 1
   e'
     @?= Cps.Primop
@@ -327,3 +328,34 @@ testSelectKnownNested = do
       info = gatherInfo IS.empty e
       (_, e') = reduce IM.empty info e
   e' @?= Cps.App (Cps.Var 0) [Cps.Int 1]
+
+testIfIdiom :: IO ()
+testIfIdiom = do
+  let e =
+        Cps.Fix
+          [ ( 1,
+              [2],
+              Cps.Primop
+                Ieql
+                [Cps.Var 2, Cps.Int 0]
+                []
+                [ Cps.App (Cps.Var 0) [Cps.Int 2],
+                  Cps.App (Cps.Var 0) [Cps.Int 1]
+                ]
+            )
+          ]
+          ( Cps.Primop
+              Gt
+              [Cps.Var 3, Cps.Var 4]
+              []
+              [Cps.App (Cps.Var 1) [Cps.Int 1], Cps.App (Cps.Var 1) [Cps.Int 0]]
+          )
+      info = gatherInfo IS.empty e
+      (_, e') = reduce IM.empty info e
+  show info @?= "fromList [(0,Info {specific = NoSpecificInfo, used = 2}),(1,Info {specific = IfIdiomInfo (App (Var 0) [Int 2]) (App (Var 0) [Int 1]), used = 2}),(2,Info {specific = NoSpecificInfo, used = 1}),(3,Info {specific = NoSpecificInfo, used = 1}),(4,Info {specific = NoSpecificInfo, used = 1})]"
+  e'
+    @?= Cps.Primop
+      Gt
+      [Cps.Var 3, Cps.Var 4]
+      []
+      [Cps.App (Cps.Var 0) [Cps.Int 1], Cps.App (Cps.Var 0) [Cps.Int 2]]
