@@ -2,7 +2,12 @@
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
-module Miniml.Optimization.Flatten (gatherInfo, reduce) where
+module Miniml.Optimization.Flatten
+  ( fieldExistsAllBranches,
+    gatherInfo,
+    reduce,
+  )
+where
 
 import Control.Monad (replicateM, when)
 import Control.Monad.Cont (ContT (ContT, runContT))
@@ -74,15 +79,34 @@ field :: Value -> Access -> State GatherState ()
 field v (Selp i _) = select v i
 field v _ = escape v
 
+fieldExistsAllBranches :: Var -> Int -> Cexp -> Bool
+fieldExistsAllBranches v j = go
+  where
+    go (Record fields _ e) = any goField fields || go e
+    go (Select i (Var v') _ _) | v == v' && i == j = True
+    go (Fix _ e) = go e
+    go e
+      | length e' > 1 = all (fieldExistsAllBranches v j) e'
+      | otherwise = any go e'
+      where
+        e' = project e
+
+    goField (Var v', Selp i _) | v == v' && i == j = True
+    goField _ = False
+
 checkFlatten :: Int -> (Var, [Var], Cexp) -> State GatherState ()
-checkFlatten maxRegs (f, vl, _) = do
+checkFlatten maxRegs (f, vl, body) = do
   usageInfo <- use #usageInfo
   case IM.lookup f usageInfo of
     Just (FunctionInfo (F arity _ esc)) -> do
       let go (a : as) (v : vs) !headroom =
             case (a, IM.lookup v usageInfo) of
               (Count c someNonRecord, Just (ArgumentInfo j))
-                | j > -1 && headroom' > 0 && not (someNonRecord || esc) ->
+                | j > -1
+                    && headroom' > 0
+                    && ( not (someNonRecord || esc)
+                           || (j == c - 1 && fieldExistsAllBranches v j body)
+                       ) ->
                     a : go as vs headroom'
                 where
                   headroom' = headroom - (c - 1)
