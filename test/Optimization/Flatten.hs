@@ -16,10 +16,10 @@ tests =
     "Argument flattening"
     [ testCase "Tests normal flattening" testNormalFlatten,
       testCase
-        "Tests escaping function that doesn't select doesn't flatten"
+        "Tests escaping fn that doesn't select highest field doesn't flatten"
         testEscapingNoFlatten,
       testCase
-        "Tests escaping function that selects field on all branches flattens"
+        "Tests escaping fn that selects highest field flattens"
         testEscapingFlatten,
       testCase
         "Tests that field that doesn't exist at all branches returns false"
@@ -170,16 +170,7 @@ testEscapingNoFlatten = do
         Cps.Fix
           [ ( 1,
               [2, 3],
-              Cps.Select
-                0
-                (Cps.Var 2)
-                4
-                ( Cps.Primop
-                    Plus
-                    [Cps.Var 4, Cps.Var 5]
-                    [7]
-                    [Cps.App (Cps.Var 3) [Cps.Var 7]]
-                )
+              Cps.Select 0 (Cps.Var 2) 4 (Cps.App (Cps.Var 3) [Cps.Var 4])
             ),
             ( 8,
               [9],

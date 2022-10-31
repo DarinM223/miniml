@@ -85,9 +85,7 @@ fieldExistsAllBranches v j = go
     go (Record fields _ e) = any goField fields || go e
     go (Select i (Var v') _ _) | v == v' && i == j = True
     go (Fix _ e) = go e
-    go e
-      | length e' > 1 = all (fieldExistsAllBranches v j) e'
-      | otherwise = any go e'
+    go e = if length e' > 1 then all go e' else any go e'
       where
         e' = project e
 
