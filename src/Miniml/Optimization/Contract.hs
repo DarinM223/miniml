@@ -11,13 +11,12 @@ import Control.Monad.State.Strict (State, execState, get, gets, modify', runStat
 import Data.Foldable (for_, traverse_)
 import Data.Functor (($>), (<&>))
 import Data.Functor.Foldable (embed, project)
-import Data.Generics.Product.Types (types)
 import Data.IntMap qualified as IM
 import Data.IntSet qualified as IS
 import GHC.Generics (Generic)
 import Miniml.Cps (Cexp (..), Value (..), Var)
 import Miniml.Shared (Access (Selp), Primop (..))
-import Optics (at', traverseOf, (%), (^.), _Just)
+import Optics (at', gplate, traverseOf, (%), (^.), _Just)
 import Optics.State.Operators ((%=), (.=), (?=))
 import Optics.Zoom (zoom)
 
@@ -148,7 +147,7 @@ reduce :: Env -> ContractInfo -> Cexp -> (Int, Cexp)
 reduce env0 info0 e0 =
   let (e0', s) =
         flip runState (ContractState env0 info0 0) $
-          go e0 >>= traverseOf (types @Value) rename
+          go e0 >>= traverseOf (gplate @Value) rename
    in (s ^. #clicks, e0')
   where
     go (Select i v w e) =

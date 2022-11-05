@@ -26,6 +26,7 @@ library
                     , Miniml.Optimization.CataExample
                     , Miniml.Optimization.Contract
                     , Miniml.Optimization.Flatten
+                    , Miniml.Optimization.Eta
                     , Miniml.Semantics
                     , Miniml.Shared
 
@@ -77,6 +78,7 @@ test-suite miniml-test
     other-modules:    CpsConvert
                     , Optimization.Contract
                     , Optimization.Flatten
+                    , Optimization.Eta
                     , Semantic
     build-depends:    base ^>=4.16
                     , miniml
