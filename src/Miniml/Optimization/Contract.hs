@@ -192,7 +192,7 @@ reduce env0 info0 e0 =
         Info (FunctionInfo (F ps body 1 True _)) 1 -> do
           vs' <- traverse rename vs
           traverse_ (uncurry newname) =<< filterM (used . fst) (zip ps vs')
-          pure body
+          go body
         Info (FunctionInfo (F ps _ calls _ _)) uses
           | uses == calls ->
               fmap (App f . fmap snd) . filterM (used . fst) $ zip ps vs

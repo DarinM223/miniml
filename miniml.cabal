@@ -27,6 +27,7 @@ library
                     , Miniml.Optimization.Contract
                     , Miniml.Optimization.Flatten
                     , Miniml.Optimization.Eta
+                    , Miniml.Optimization.Uncurry
                     , Miniml.Semantics
                     , Miniml.Shared
 
@@ -79,6 +80,7 @@ test-suite miniml-test
                     , Optimization.Contract
                     , Optimization.Flatten
                     , Optimization.Eta
+                    , Optimization.Uncurry
                     , Semantic
     build-depends:    base ^>=4.16
                     , miniml
