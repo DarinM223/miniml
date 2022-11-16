@@ -3,7 +3,7 @@
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
-module Miniml.Optimization.Expand where
+module Miniml.Optimization.Expand (gatherInfo, expand) where
 
 import Control.Applicative (liftA2)
 import Control.Monad.State.Strict (State, execState, modify', runState, state)
@@ -52,6 +52,9 @@ constC = 50
 
 constD :: Int
 constD = 20
+
+constE :: Int
+constE = 50
 
 call :: Value -> State ExpandInfo ()
 call (Label v) = call (Var v)
@@ -172,7 +175,7 @@ rename = go
       where
         fn (_, xs, e) = (,,e) <$> fresh <*> traverse (const fresh) xs
         updateEnv env' (f, xs, _) (f', xs', _) =
-          let env'' = IM.insert f (Label f') env'
+          let env'' = IM.insert f (Var f') env'
            in foldl' (\e (x, x') -> IM.insert x (Var x') e) env'' $ zip xs xs'
     go env (Switch v es) = Switch (look env v) <$> traverse (go env) es
     go env (Primop op vs ws es) = do
@@ -187,8 +190,8 @@ data ExpandState = ExpandState
   }
   deriving (Generic)
 
-expand :: ExpandInfo -> Cexp -> State Int (Int, Cexp)
-expand info e0 = state $ \(!tmp) ->
+expand :: Int -> ExpandInfo -> Cexp -> State Int (Int, Cexp)
+expand r info e0 = state $ \(!tmp) ->
   let (e0', ExpandState _ !tmp' !clicks) =
         runState (go 0 e0) (ExpandState IM.empty tmp 0)
    in ((clicks, e0'), tmp')
@@ -201,7 +204,7 @@ expand info e0 = state $ \(!tmp) ->
     go level (App f xs) = do
       case get f of
         Just (FunctionInfo (F args body _ calls size))
-          | calls > 0 && heuristic < constC - level * constD -> do
+          | calls > 0 && heuristic < constC - level * constD - r * constE -> do
               #clicks %= (+ 1)
               go (level + 1) =<< zoom #counter (rename env body)
           where

@@ -34,7 +34,7 @@ testSimple = do
             )
           ]
           (Cps.App (Cps.Var 1) [Cps.Var 5, Cps.Var 6])
-      (clicks, e') = evalState (expand (gatherInfo e) e) 6
+      (clicks, e') = evalState (expand 0 (gatherInfo e) e) 6
   clicks @?= 1
   e'
     @?= Cps.Fix
@@ -73,7 +73,7 @@ testLargeBody = do
             (9, [10], Cps.App (Cps.Var 1) [Cps.Var 10, Cps.Var 8, Cps.Var 0])
           ]
           (Cps.App (Cps.Var 1) [Cps.Var 1000, Cps.Var 1001, Cps.Var 9])
-  evalState (expand (gatherInfo e) e) 1001 @?= (0, e)
+  evalState (expand 0 (gatherInfo e) e) 1001 @?= (0, e)
 
 testExpandSemantics :: IO ()
 testExpandSemantics = Semantics.withArgs args $ do
@@ -87,7 +87,7 @@ testExpandSemantics = Semantics.withArgs args $ do
             (9, [10], Cps.App (Cps.Var 1) [Cps.Var 10, Cps.Int 4, Cps.Var 0])
           ]
           (Cps.App (Cps.Var 1) [Cps.Int 2, Cps.Int 3, Cps.Var 9])
-      ((clicks, e'), c) = runState (expand (gatherInfo e) e) 1001
+      ((clicks, e'), c) = runState (expand 0 (gatherInfo e) e) 1001
       semantics = Semantics.cps [0] [Semantics.mkFunc resultInteger]
       store = Semantics.initialStore c defaultHandler
       result = runSemanticM stdGen $ semantics e store
@@ -111,7 +111,7 @@ testInfiniteLoop = do
             )
           ]
           (Cps.App (Cps.Var 1) [Cps.Int 1])
-      (clicks, e') = evalState (expand (gatherInfo e) e) 3
+      (clicks, e') = evalState (expand 0 (gatherInfo e) e) 3
   clicks @?= 6
   e'
     @?= Cps.Fix
