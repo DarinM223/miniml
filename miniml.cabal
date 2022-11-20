@@ -29,6 +29,7 @@ library
                     , Miniml.Optimization.Eta
                     , Miniml.Optimization.Uncurry
                     , Miniml.Optimization.Expand
+                    , Miniml.Optimization.Hoist
                     , Miniml.Semantics
                     , Miniml.Shared
 
@@ -83,6 +84,7 @@ test-suite miniml-test
                     , Optimization.Eta
                     , Optimization.Uncurry
                     , Optimization.Expand
+                    , Optimization.Hoist
                     , Semantic
     build-depends:    base ^>=4.16
                     , miniml

@@ -3,6 +3,7 @@ import Optimization.Contract qualified as Contract
 import Optimization.Eta qualified as Eta
 import Optimization.Expand qualified as Expand
 import Optimization.Flatten qualified as Flatten
+import Optimization.Hoist qualified as Hoist
 import Optimization.Uncurry qualified as Uncurry
 import Test.Tasty (TestTree, defaultMain, testGroup)
 
@@ -18,5 +19,6 @@ tests =
       Flatten.tests,
       Eta.tests,
       Uncurry.tests,
-      Expand.tests
+      Expand.tests,
+      Hoist.tests
     ]
