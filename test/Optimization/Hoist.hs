@@ -20,8 +20,17 @@ tests =
       testCase "Simple hoisting up fix" testSimpleFixHoist,
       testCase
         "Hoisting pushes selects and offsets into switches"
-        testHoistPushSwitch
+        testHoistPushSwitch,
+      testCase
+        "Hoisting pushes alength and slength primops into branches"
+        testHoistPrimopBranch
     ]
+
+fl :: [(Cps.Var, [Cps.Var], Cps.Cexp)]
+fl =
+  [ (1, [2, 3], Cps.App (Cps.Var 3) [Cps.Int 1]),
+    (4, [5], Cps.App (Cps.Var 5) [Cps.Int 2])
+  ]
 
 testFixPushSwitch :: IO ()
 testFixPushSwitch = do
@@ -56,10 +65,6 @@ testFixPushSwitch = do
                   ]
               )
           )
-      fl =
-        [ (1, [2, 3], Cps.App (Cps.Var 3) [Cps.Int 1]),
-          (4, [5], Cps.App (Cps.Var 5) [Cps.Int 2])
-        ]
   pushDown (Cps.Fix fl e) e
     @?= Just
       ( Cps.Select
@@ -117,7 +122,6 @@ testFixNoPushSwitch = do
                   ]
               )
           )
-      fl = [(1, [2, 3], Cps.App (Cps.Var 3) [Cps.Int 1]), (4, [5], Cps.App (Cps.Var 5) [Cps.Int 2])]
   pushDown (Cps.Fix fl e) e @?= Nothing
 
 testLastSucceed :: IO ()
@@ -146,7 +150,6 @@ testLastSucceed = do
                   ]
               )
           )
-      fl = [(1, [2, 3], Cps.App (Cps.Var 3) [Cps.Int 1]), (4, [5], Cps.App (Cps.Var 5) [Cps.Int 2])]
   pushDown (Cps.Fix fl e) e
     @?= Just
       ( Cps.Select
@@ -286,5 +289,45 @@ testHoistPushSwitch = do
                   3
                   (Cps.App (Cps.Var 0) [Cps.Var 3])
               )
+          ]
+      )
+
+testHoistPrimopBranch :: IO ()
+testHoistPrimopBranch = do
+  let e =
+        Cps.Primop
+          Alength
+          [Cps.Var 1]
+          [2]
+          [ Cps.Primop
+              Slength
+              [Cps.Var 2]
+              [3]
+              [ Cps.Switch
+                  (Cps.Var 1)
+                  [ Cps.Fix
+                      [(4, [5], Cps.App (Cps.Var 5) [Cps.Int 1])]
+                      (Cps.App (Cps.Var 0) [Cps.Int 2]),
+                    Cps.App (Cps.Var 0) [Cps.Var 3]
+                  ]
+              ]
+          ]
+      (_, e') = hoist e
+  e'
+    @?= Cps.Fix
+      [(4, [5], Cps.App (Cps.Var 5) [Cps.Int 1])]
+      ( Cps.Switch
+          (Cps.Var 1)
+          [ Cps.App (Cps.Var 0) [Cps.Int 2],
+            Cps.Primop
+              Alength
+              [Cps.Var 1]
+              [2]
+              [ Cps.Primop
+                  Slength
+                  [Cps.Var 2]
+                  [3]
+                  [Cps.App (Cps.Var 0) [Cps.Var 3]]
+              ]
           ]
       )

@@ -6,6 +6,7 @@ import Data.IntSet qualified as IS
 import Data.Maybe (fromMaybe)
 import Data.Tuple.Extra (fst3)
 import Miniml.Cps (Cexp (..), CexpF (..), Value (..), Var)
+import Miniml.Shared (Primop (Alength, Slength))
 
 constr :: Cexp -> Cexp -> Cexp
 constr (Record vl w _) = Record vl w
@@ -35,7 +36,6 @@ freeVars = go IS.empty
     free env (Var v) | not (IS.member v env) = IS.singleton v
     free _ _ = IS.empty
 
-    go :: IS.IntSet -> Cexp -> IS.IntSet
     go env (Record vl w e) =
       IS.unions (go (IS.insert w env) e : fmap (free env . fst) vl)
     go env (Select _ v w e) = IS.union (free env v) (go (IS.insert w env) e)
@@ -93,8 +93,15 @@ hoist = cata go
       | otherwise = (m, Fix fl (Switch v cl'))
       where
         (m, fl, cl') = foldr (goBranch []) (IS.empty, [], []) cl
+    go (PrimopF op vl wl [(m, e)]) | op `elem` [Alength, Slength] =
+      case e of
+        Fix fl e' | not (any (`IS.member` m) wl) -> (m, Fix fl (push e'))
+        _ -> (IS.empty, push e)
+      where
+        push e0 =
+          fromMaybe (Primop op vl wl [e0]) (pushDown (Primop op vl wl [e0]) e0)
     go (PrimopF op vl wl cl)
-      | null fl = (m, Primop op vl wl cl')
+      | null fl = (IS.empty, Primop op vl wl cl')
       | otherwise = (m, Fix fl (Primop op vl wl cl'))
       where
         (m, fl, cl') = foldr (goBranch wl) (IS.empty, [], []) cl
