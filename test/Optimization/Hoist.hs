@@ -232,20 +232,13 @@ testSimpleFixHoist = do
           [Cps.Var 3, Cps.Int 3]
           [4]
           [ Cps.Fix
-              [ ( 5,
-                  [6],
-                  Cps.Select
-                    1
-                    (Cps.Var 6)
-                    9
-                    ( Cps.Fix
-                        [ (10, [11], Cps.App (Cps.Var 0) [Cps.Var 9]),
-                          (12, [13], Cps.App (Cps.Var 0) [Cps.Var 3]),
-                          (7, [8], Cps.App (Cps.Var 0) [Cps.Var 8])
-                        ]
-                        (Cps.App (Cps.Var 12) [Cps.Int 1])
-                    )
+              [ (5, [6], Cps.App (Cps.Var 12) [Cps.Int 1]),
+                (7, [8], Cps.App (Cps.Var 0) [Cps.Var 8]),
+                ( 10,
+                  [11],
+                  Cps.Select 1 (Cps.Var 6) 9 (Cps.App (Cps.Var 0) [Cps.Var 9])
                 ),
+                (12, [13], Cps.App (Cps.Var 0) [Cps.Var 3]),
                 (14, [15], Cps.App (Cps.Var 0) [Cps.Var 4])
               ]
               (Cps.App (Cps.Var 14) [Cps.Int 1])

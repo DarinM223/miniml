@@ -4,7 +4,7 @@ import Data.Foldable (foldl')
 import Data.Functor.Foldable (cata)
 import Data.IntSet qualified as IS
 import Data.Maybe (fromMaybe)
-import Data.Tuple.Extra (fst3)
+import Data.Tuple.Extra (fst3, thd3, third3)
 import Miniml.Cps (Cexp (..), CexpF (..), Value (..), Var)
 import Miniml.Shared (Primop (Alength, Slength))
 
@@ -134,7 +134,12 @@ pushDown = go
     go (Fix fl' _) (Fix fl rest) = Just $ fromMaybe fix $ pushDown fix rest
       where
         fix = Fix (fl ++ fl') rest
-    go e (Fix fl rest) = Fix fl <$> go e rest
+    go e (Fix fl rest) = pushBranch e reconstruct (rest : fmap thd3 fl)
+      where
+        reconstruct :: [Cexp] -> Cexp
+        reconstruct (rest' : bl) =
+          Fix (uncurry (flip (third3 . const)) <$> zip fl bl) rest'
+        reconstruct _ = error "No branches in Fix, this can't happen"
     go e (Switch v el) = pushBranch e (Switch v) el
     go e (Primop op vl wl [rest])
       | any (`elem` (Var <$> bindings e)) vl = Nothing
