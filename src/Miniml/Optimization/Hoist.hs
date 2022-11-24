@@ -1,9 +1,10 @@
 module Miniml.Optimization.Hoist where
 
-import Data.Foldable (foldl')
+import Control.Monad.State.Strict (State, evalState, get, modify')
+import Data.Foldable (fold, foldl', traverse_)
 import Data.Functor.Foldable (cata)
 import Data.IntSet qualified as IS
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Tuple.Extra (fst3, thd3, third3)
 import Miniml.Cps (Cexp (..), CexpF (..), Value (..), Var)
 import Miniml.Shared (Primop (Alength, Slength))
@@ -51,74 +52,69 @@ freeVars = go IS.empty
       where
         env' = foldl' (flip IS.insert) env wl
 
--- | Returns the free variables of the passed up Fixes
--- and the updated expression with the hoisted Fixes.
---
--- Only returns the free variables of the fixes because
--- it is only used to check for scope rules when hoisting upward.
-hoist :: Cexp -> (IS.IntSet, Cexp)
-hoist = cata go
+escaping :: Cexp -> IS.IntSet
+escaping = flip evalState IS.empty . cata go
   where
-    go :: CexpF (IS.IntSet, Cexp) -> (IS.IntSet, Cexp)
-    go (RecordF vl w (_, e)) = (IS.empty, Record vl w e)
-    go (SelectF i v w (m, e)) =
-      case e of
-        Fix fl e' | not (IS.member w m) -> (m, Fix fl (push e'))
-        _ -> (IS.empty, push e)
+    var (Var v) = Just v
+    var (Label l) = Just l
+    var _ = Nothing
+
+    go :: CexpF (State IS.IntSet IS.IntSet) -> State IS.IntSet IS.IntSet
+    go (RecordF fl _ e) = do
+      escs <- IS.intersection (IS.fromList (mapMaybe (var . fst) fl)) <$> get
+      IS.union escs <$> e
+    go (AppF _ vl) = IS.intersection (IS.fromList (mapMaybe var vl)) <$> get
+    go e@(FixF fl _) =
+      traverse_ (modify' . IS.insert . fst3) fl >> fold <$> sequence e
+    go e = fold <$> sequence e
+
+hoist :: IS.IntSet -> Cexp -> Cexp
+hoist esc = (\(_, fl0, e0) -> fix fl0 e0) . cata go
+  where
+    fix fl e = if null fl then e else Fix fl e
+    push f e = fromMaybe (f e) (pushDown (f e) e)
+
+    -- Returns the free variables of the passed up Fixes,
+    -- a list of the passed up Fixes, and the rest of the expression.
+    go (RecordF vl w (_, fl, e)) = (IS.empty, [], Record vl w (fix fl e))
+    go (SelectF i v w (m, fl, e))
+      | not (IS.member w m) = (m, fl, push (Select i v w) e)
+      | otherwise = (IS.empty, [], push (Select i v w) (fix fl e))
+    go (OffsetF i v w (m, fl, e))
+      | not (IS.member w m) = (m, fl, push (Offset i v w) e)
+      | otherwise = (IS.empty, [], push (Offset i v w) (fix fl e))
+    go (AppF f vl) = (IS.empty, [], App f vl)
+    go (FixF fl (m, fl', e)) =
+      case pushDown (Fix closures e) e of
+        Just e' -> (m, fl', fix known e')
+        Nothing -> (free' <> m, closures ++ fl', fix known e)
       where
-        push e0 = fromMaybe (Select i v w e0) (pushDown (Select i v w e0) e0)
-    go (OffsetF i v w (m, e)) =
-      case e of
-        Fix fl e' | not (IS.member w m) -> (m, Fix fl (push e'))
-        _ -> (IS.empty, push e)
-      where
-        push e0 = fromMaybe (Offset i v w e0) (pushDown (Offset i v w e0) e0)
-    go (AppF f vl) = (IS.empty, App f vl)
-    -- TODO(DarinM223): first split the known from the closure requiring functions.
-    go (FixF fl (m, e)) =
-      case e of
-        Fix fl'' e' ->
-          case pushDown (Fix fl' e) e' of
-            Just e'' -> (m, Fix fl'' e'')
-            Nothing -> (IS.union free' m, Fix (fl' ++ fl'') e')
-        _ ->
-          case pushDown (Fix fl' e) e of
-            Just e' -> (IS.empty, e')
-            Nothing -> (free', Fix fl' e)
-      where
-        free' = free IS.\\ IS.fromList (fmap fst3 fl')
-        (free, fl') = foldr goFn (IS.empty, []) fl
-    go (SwitchF v cl)
-      | null fl = (m, Switch v cl')
-      | otherwise = (m, Fix fl (Switch v cl'))
+        free' = free IS.\\ IS.fromList (fmap fst3 closures)
+        (free, closures, known) = foldr goFn (IS.empty, [], []) fl
+    go (SwitchF v cl) = (m, fl, Switch v cl')
       where
         (m, fl, cl') = foldr (goBranch []) (IS.empty, [], []) cl
-    go (PrimopF op vl wl [(m, e)]) | op `elem` [Alength, Slength] =
-      case e of
-        Fix fl e' | not (any (`IS.member` m) wl) -> (m, Fix fl (push e'))
-        _ -> (IS.empty, push e)
-      where
-        push e0 =
-          fromMaybe (Primop op vl wl [e0]) (pushDown (Primop op vl wl [e0]) e0)
-    go (PrimopF op vl wl cl)
-      | null fl = (IS.empty, Primop op vl wl cl')
-      | otherwise = (m, Fix fl (Primop op vl wl cl'))
+    go (PrimopF op vl wl [(m, fl, e)])
+      | op `elem` [Alength, Slength] =
+          if not (any (`IS.member` m) wl)
+            then (m, fl, push (Primop op vl wl . (: [])) e)
+            else (IS.empty, [], push (Primop op vl wl . (: [])) (fix fl e))
+    go (PrimopF op vl wl cl) = (m, fl, Primop op vl wl cl')
       where
         (m, fl, cl') = foldr (goBranch wl) (IS.empty, [], []) cl
 
-    goBranch wl (m, e) (free, fl, result) = case e of
-      Fix fl' e'
-        | not (any (`IS.member` m) wl) ->
-            (IS.union free m, fl' ++ fl, e' : result)
-      _ -> (free, fl, e : result)
-    goFn (f, vl, (m, e)) (free, result) =
-      case e of
-        Fix fl' e'
-          | not (any (`IS.member` m) vl) ->
-              (free' e', (f, vl, e') : fl' ++ result)
-        _ -> (free' e, (f, vl, e) : result)
+    goBranch wl (m, fl', e) (free, fl, result)
+      | not (any (`IS.member` m) wl) = (IS.union free m, fl' ++ fl, e : result)
+      | otherwise = (free, fl, fix fl' e : result)
+    goFn (f, vl, (m, fl, e)) (m', closures, known)
+      | not (any (`IS.member` m) vl) = update (m' <> m) (fl ++ closures) known e
+      | otherwise = update m' closures known (fix fl e)
       where
-        free' body = IS.unions [free, m, freeVars body] IS.\\ IS.fromList vl
+        update m0 cs ks body
+          | IS.member f esc = (m0 <> bodyVars, (f, vl, body) : cs, ks)
+          | otherwise = (m0, cs, (f, vl, body) : ks)
+          where
+            bodyVars = freeVars body IS.\\ IS.fromList vl
 
 pushDown :: Cexp -> Cexp -> Maybe Cexp
 pushDown = go

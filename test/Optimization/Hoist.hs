@@ -1,7 +1,8 @@
 module Optimization.Hoist (tests) where
 
+import Data.IntSet qualified as IS
 import Miniml.Cps qualified as Cps
-import Miniml.Optimization.Hoist (hoist, pushDown)
+import Miniml.Optimization.Hoist (escaping, hoist, pushDown)
 import Miniml.Shared (Primop (..))
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, (@?=))
@@ -23,7 +24,8 @@ tests =
         testHoistPushSwitch,
       testCase
         "Hoisting pushes alength and slength primops into branches"
-        testHoistPrimopBranch
+        testHoistPrimopBranch,
+      testCase "Doesn't hoist known functions" testNoHoistKnownFunctions
     ]
 
 fl :: [(Cps.Var, [Cps.Var], Cps.Cexp)]
@@ -221,8 +223,7 @@ testSimpleFixHoist = do
                   )
               ]
           ]
-      (_, e') = hoist e
-  e'
+  hoist (IS.fromList [5, 7, 10, 14]) e
     @?= Cps.Primop
       Plus
       [Cps.Int 1, Cps.Int 2]
@@ -232,13 +233,22 @@ testSimpleFixHoist = do
           [Cps.Var 3, Cps.Int 3]
           [4]
           [ Cps.Fix
-              [ (5, [6], Cps.App (Cps.Var 12) [Cps.Int 1]),
-                (7, [8], Cps.App (Cps.Var 0) [Cps.Var 8]),
-                ( 10,
-                  [11],
-                  Cps.Select 1 (Cps.Var 6) 9 (Cps.App (Cps.Var 0) [Cps.Var 9])
+              [ ( 5,
+                  [6],
+                  Cps.Fix
+                    [ (12, [13], Cps.App (Cps.Var 0) [Cps.Var 3]),
+                      ( 10,
+                        [11],
+                        Cps.Select
+                          1
+                          (Cps.Var 6)
+                          9
+                          (Cps.App (Cps.Var 0) [Cps.Var 9])
+                      ),
+                      (7, [8], Cps.App (Cps.Var 0) [Cps.Var 8])
+                    ]
+                    (Cps.App (Cps.Var 12) [Cps.Int 1])
                 ),
-                (12, [13], Cps.App (Cps.Var 0) [Cps.Var 3]),
                 (14, [15], Cps.App (Cps.Var 0) [Cps.Var 4])
               ]
               (Cps.App (Cps.Var 14) [Cps.Int 1])
@@ -265,8 +275,7 @@ testHoistPushSwitch = do
                   ]
               )
           )
-      (_, e') = hoist e
-  e'
+  hoist (IS.singleton 4) e
     @?= Cps.Fix
       [(4, [5], Cps.App (Cps.Var 5) [Cps.Int 1])]
       ( Cps.Switch
@@ -305,8 +314,7 @@ testHoistPrimopBranch = do
                   ]
               ]
           ]
-      (_, e') = hoist e
-  e'
+  hoist (IS.singleton 4) e
     @?= Cps.Fix
       [(4, [5], Cps.App (Cps.Var 5) [Cps.Int 1])]
       ( Cps.Switch
@@ -323,4 +331,55 @@ testHoistPrimopBranch = do
                   [Cps.App (Cps.Var 0) [Cps.Var 3]]
               ]
           ]
+      )
+
+testNoHoistKnownFunctions :: IO ()
+testNoHoistKnownFunctions = do
+  let e =
+        Cps.Select
+          0
+          (Cps.Var 1)
+          2
+          ( Cps.Fix
+              [ ( 3,
+                  [4],
+                  Cps.Fix
+                    [ (5, [6], Cps.App (Cps.Var 0) [Cps.Var 5]),
+                      (7, [8], Cps.App (Cps.Var 0) [Cps.Int 1])
+                    ]
+                    ( Cps.Fix
+                        [(9, [10], Cps.App (Cps.Var 0) [Cps.Int 2])]
+                        (Cps.App (Cps.Var 9) [Cps.Int 4])
+                    )
+                )
+              ]
+              ( Cps.Fix
+                  [(11, [12], Cps.App (Cps.Var 11) [Cps.Int 5])]
+                  (Cps.App (Cps.Var 0) [Cps.Var 3])
+              )
+          )
+      escapes = escaping e
+  escapes @?= IS.fromList [3, 5]
+  -- Merges function 3 into function 11, and breaks off function 5
+  -- and merges into function 9.
+  hoist escapes e
+    @?= Cps.Select
+      0
+      (Cps.Var 1)
+      2
+      ( Cps.Fix
+          [ (11, [12], Cps.App (Cps.Var 11) [Cps.Int 5]),
+            ( 3,
+              [4],
+              Cps.Fix
+                [(7, [8], Cps.App (Cps.Var 0) [Cps.Int 1])]
+                ( Cps.Fix
+                    [ (9, [10], Cps.App (Cps.Var 0) [Cps.Int 2]),
+                      (5, [6], Cps.App (Cps.Var 0) [Cps.Var 5])
+                    ]
+                    (Cps.App (Cps.Var 9) [Cps.Int 4])
+                )
+            )
+          ]
+          (Cps.App (Cps.Var 0) [Cps.Var 3])
       )
