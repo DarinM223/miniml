@@ -69,8 +69,10 @@ escaping = flip evalState IS.empty . cata go
     go e = fold <$> sequence e
 
 hoist :: IS.IntSet -> Cexp -> Cexp
-hoist esc = (\(_, fl0, e0) -> fix fl0 e0) . cata go
+hoist esc = stop . cata go
   where
+    -- Stop hoisting up Fix and return the expression with the Fix attached.
+    stop (_, fl, e) = fix fl e
     fix fl e = if null fl then e else Fix fl e
     push f e = fromMaybe (f e) (pushDown (f e) e)
 
@@ -91,21 +93,15 @@ hoist esc = (\(_, fl0, e0) -> fix fl0 e0) . cata go
       where
         free' = free IS.\\ IS.fromList (fmap fst3 closures)
         (free, closures, known) = foldr goFn (IS.empty, [], []) fl
-    go (SwitchF v cl) = (m, fl, Switch v cl')
-      where
-        (m, fl, cl') = foldr (goBranch []) (IS.empty, [], []) cl
+    go (SwitchF v cl) = (IS.empty, [], Switch v (stop <$> cl))
     go (PrimopF op vl wl [(m, fl, e)])
-      | op `elem` [Alength, Slength] =
-          if not (any (`IS.member` m) wl)
-            then (m, fl, push (Primop op vl wl . (: [])) e)
-            else (IS.empty, [], push (Primop op vl wl . (: [])) (fix fl e))
-    go (PrimopF op vl wl cl) = (m, fl, Primop op vl wl cl')
+      | not (any (`IS.member` m) wl) = (m, fl, push' prim e)
+      | otherwise = (IS.empty, [], push' prim (fix fl e))
       where
-        (m, fl, cl') = foldr (goBranch wl) (IS.empty, [], []) cl
+        prim = Primop op vl wl . (: [])
+        push' = if op `elem` [Alength, Slength] then push else id
+    go (PrimopF op vl wl cl) = (IS.empty, [], Primop op vl wl (stop <$> cl))
 
-    goBranch wl (m, fl', e) (free, fl, result)
-      | not (any (`IS.member` m) wl) = (IS.union free m, fl' ++ fl, e : result)
-      | otherwise = (free, fl, fix fl' e : result)
     goFn (f, vl, (m, fl, e)) (m', closures, known)
       | not (any (`IS.member` m) vl) = update (m' <> m) (fl ++ closures) known e
       | otherwise = update m' closures known (fix fl e)
