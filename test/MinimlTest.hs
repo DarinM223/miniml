@@ -1,5 +1,6 @@
 import CpsConvert qualified
 import Optimization.Contract qualified as Contract
+import Optimization.Cse qualified as Cse
 import Optimization.Eta qualified as Eta
 import Optimization.Expand qualified as Expand
 import Optimization.Flatten qualified as Flatten
@@ -20,5 +21,6 @@ tests =
       Eta.tests,
       Uncurry.tests,
       Expand.tests,
-      Hoist.tests
+      Hoist.tests,
+      Cse.tests
     ]

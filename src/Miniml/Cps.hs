@@ -11,6 +11,7 @@ import Control.Monad.State.Strict (MonadState, State)
 import Data.Char (ord)
 import Data.Foldable (foldlM)
 import Data.Functor.Foldable.TH (makeBaseFunctor)
+import Data.Hashable (Hashable)
 import Data.List (sortOn)
 import Data.List.Extra (groupOn)
 import Data.Text (Text)
@@ -27,7 +28,9 @@ data Value
   | Int Int
   | Real Text
   | String Text
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
+
+instance Hashable Value
 
 data Cexp
   = Record [(Value, Access)] Var Cexp
@@ -38,6 +41,8 @@ data Cexp
   | Switch Value [Cexp]
   | Primop Primop [Value] [Var] [Cexp]
   deriving (Show, Eq, Generic)
+
+instance Hashable Cexp
 
 makeBaseFunctor ''Cexp
 

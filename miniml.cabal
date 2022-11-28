@@ -30,6 +30,7 @@ library
                     , Miniml.Optimization.Uncurry
                     , Miniml.Optimization.Expand
                     , Miniml.Optimization.Hoist
+                    , Miniml.Optimization.Cse
                     , Miniml.Semantics
                     , Miniml.Shared
 
@@ -42,10 +43,12 @@ library
                     , containers
                     , extra
                     , generic-optics
+                    , hashable
                     , mtl
                     , optics
                     , recursion-schemes
                     , text
+                    , unordered-containers
     ghc-options: -Wall
                  -Wcompat
                  -Wincomplete-record-updates
@@ -85,6 +88,7 @@ test-suite miniml-test
                     , Optimization.Uncurry
                     , Optimization.Expand
                     , Optimization.Hoist
+                    , Optimization.Cse
                     , Semantic
     build-depends:    base ^>=4.16
                     , miniml
