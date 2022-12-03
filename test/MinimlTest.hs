@@ -1,3 +1,4 @@
+import Closure.Free qualified as Free
 import CpsConvert qualified
 import Optimization.Contract qualified as Contract
 import Optimization.Cse qualified as Cse
@@ -22,5 +23,6 @@ tests =
       Uncurry.tests,
       Expand.tests,
       Hoist.tests,
-      Cse.tests
+      Cse.tests,
+      Free.tests
     ]

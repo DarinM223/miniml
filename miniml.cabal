@@ -31,6 +31,7 @@ library
                     , Miniml.Optimization.Expand
                     , Miniml.Optimization.Hoist
                     , Miniml.Optimization.Cse
+                    , Miniml.Closure.Free
                     , Miniml.Semantics
                     , Miniml.Shared
 
@@ -89,6 +90,7 @@ test-suite miniml-test
                     , Optimization.Expand
                     , Optimization.Hoist
                     , Optimization.Cse
+                    , Closure.Free
                     , Semantic
     build-depends:    base ^>=4.16
                     , miniml
