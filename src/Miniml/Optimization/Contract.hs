@@ -140,6 +140,7 @@ used :: Var -> State ContractState Bool
 used v = zoom #info $ gets $ \m -> m IM.! v ^. #used > 0
 
 lookupInfo :: Value -> State ContractState Info
+lookupInfo (Label l) = lookupInfo (Var l)
 lookupInfo (Var v) = zoom #info $ gets $ \m -> m IM.! v
 lookupInfo v = error $ "Invalid value: " ++ show v
 

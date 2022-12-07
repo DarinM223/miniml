@@ -1,3 +1,4 @@
+import Closure.Convert qualified as Convert
 import Closure.Free qualified as Free
 import CpsConvert qualified
 import Optimization.Contract qualified as Contract
@@ -24,5 +25,6 @@ tests =
       Expand.tests,
       Hoist.tests,
       Cse.tests,
-      Free.tests
+      Free.tests,
+      Convert.tests
     ]

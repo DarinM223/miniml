@@ -19,6 +19,7 @@ import Data.Text qualified as T
 import GHC.Generics (Generic)
 import Miniml.Lambda qualified as L
 import Miniml.Shared (Access (..), Primop (..), fresh)
+import Optics (Traversal', traversalVL)
 
 type Var = Int
 
@@ -43,6 +44,17 @@ data Cexp
   deriving (Show, Eq, Generic)
 
 instance Hashable Cexp
+
+shallowValues :: Traversal' Cexp Value
+shallowValues = traversalVL $ \f e -> case e of
+  Record vl w e' ->
+    Record <$> traverse (\(v, a) -> (,a) <$> f v) vl <*> pure w <*> pure e'
+  Select i v w e' -> Select i <$> f v <*> pure w <*> pure e'
+  Offset i v w e' -> Offset i <$> f v <*> pure w <*> pure e'
+  App v vl -> App <$> f v <*> traverse f vl
+  Fix fl e' -> pure $ Fix fl e'
+  Switch v el -> Switch <$> f v <*> pure el
+  Primop op vl wl el -> Primop op <$> traverse f vl <*> pure wl <*> pure el
 
 makeBaseFunctor ''Cexp
 
