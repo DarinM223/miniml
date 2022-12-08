@@ -6,13 +6,11 @@ module Miniml.Optimization.Cse where
 import Control.Monad.State.Strict (State, gets, runState)
 import Data.Foldable (traverse_)
 import Data.Functor.Foldable (embed, project)
-import Data.Generics.Product.Types (typesUsing)
 import Data.HashMap.Strict qualified as HM
 import Data.IntMap.Strict qualified as IM
 import Data.Maybe (fromJust)
 import GHC.Generics (Generic)
-import Miniml.Cps (Cexp (..), Value (Label, Var), Var)
-import Miniml.Optimization.CataExample (Shallow)
+import Miniml.Cps (Cexp (..), Value (Label, Var), Var, shallowValues)
 import Miniml.Optimization.Hoist (bindings, constr)
 import Optics (at', traverseOf, use, zoom, (%), (^.))
 import Optics.State.Operators ((%=))
@@ -51,7 +49,7 @@ reduce e0 =
     go :: Cexp -> State CseState Cexp
     go e@(Fix {}) = embed <$> traverse go (project e)
     go e | not (null (bindings e)) = do
-      e' <- traverseOf (typesUsing @Shallow @Value) rename e
+      e' <- traverseOf shallowValues rename e
       let e'' = common e'
       f <-
         use (#bindingMap % at' e'') >>= \case
@@ -62,5 +60,5 @@ reduce e0 =
           Nothing -> constr e' <$ (#bindingMap %= HM.insert e'' (bindings e'))
       f . fromJust . foldr (const . Just) Nothing <$> traverse go (project e')
     go e = do
-      e' <- traverseOf (typesUsing @Shallow @Value) rename e
+      e' <- traverseOf shallowValues rename e
       embed <$> traverse go (project e')

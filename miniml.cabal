@@ -23,7 +23,6 @@ library
     exposed-modules:  Miniml
                     , Miniml.Cps
                     , Miniml.Lambda
-                    , Miniml.Optimization.CataExample
                     , Miniml.Optimization.Contract
                     , Miniml.Optimization.Flatten
                     , Miniml.Optimization.Eta
@@ -44,7 +43,6 @@ library
     build-depends:    base ^>=4.16
                     , containers
                     , extra
-                    , generic-optics
                     , hashable
                     , mtl
                     , optics
