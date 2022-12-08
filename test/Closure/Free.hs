@@ -101,3 +101,4 @@ testExample = do
           ]
       )
       (IS.fromList [f, j, k, m, s])
+      (IM.fromList [(h, 2), (f, 2), (j, 1), (k, 1), (m, 2), (s, 1)])

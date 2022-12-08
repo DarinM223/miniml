@@ -24,7 +24,9 @@ data Iteration = Iteration
   { -- | The set of free variables for a function f.
     v :: !(IM.IntMap IS.IntSet),
     -- | The set of functions that seem to require a closure.
-    c :: !IS.IntSet
+    c :: !IS.IntSet,
+    -- | The number of arguments for a function f.
+    a :: !(IM.IntMap Int)
   }
   deriving (Show, Eq)
 
@@ -39,15 +41,16 @@ calcFreeVars maxRegs sameFix called !iteration
     iteration' = runIteration maxRegs sameFix called iteration
 
 runIteration :: Int -> SameFix -> CalledMap -> Iteration -> Iteration
-runIteration maxRegs sameFix called (Iteration !v !c) = Iteration v' c'
+runIteration maxRegs sameFix called (Iteration !v !c !a) = Iteration v' c' a
   where
     v' = IM.mapWithKey updateFreeVars v
     updateFreeVars f free =
       free <> IS.unions [v ! g | g <- IS.elems ((called ! f) \\ c)]
 
     c' = c <> c1' <> c2'
-    c1' = IS.fromList $ filter (\f -> maxRegs < IS.size (v ! f)) $ IM.keys v
+    c1' = IS.fromList $ filter tooManyArgs $ IM.keys v
     c2' = IS.fromList $ filter callsSameFixClosure $ IM.keys v
+    tooManyArgs f = maxRegs < IS.size (v ! f) + a IM.! f
     -- If f calls any function defined in the same FIX that requires
     -- the closure, we will make f use the closure.
     callsSameFixClosure f =
@@ -76,9 +79,14 @@ fnsCalledInBody = go []
     go stack e = IM.unionsWith (<>) $ go stack <$> project e
 
 initIteration :: Cexp -> Iteration
-initIteration e0 = Iteration (go e0) (escaping e0)
+initIteration e0 = Iteration (goFree e0) (escaping e0) (goArgs e0)
   where
-    go e@(Fix fl _) =
+    goFree e@(Fix fl _) =
       IM.fromList [(f, freeVars body \\ IS.fromList vl) | (f, vl, body) <- fl]
-        <> foldMap' go (project e)
-    go e = foldMap' go (project e)
+        <> foldMap' goFree (project e)
+    goFree e = foldMap' goFree (project e)
+
+    goArgs e@(Fix fl _) =
+      IM.fromList [(f, length vl) | (f, vl, _) <- fl]
+        <> foldMap' goArgs (project e)
+    goArgs e = foldMap' goArgs (project e)

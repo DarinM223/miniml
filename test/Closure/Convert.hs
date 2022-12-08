@@ -15,10 +15,10 @@ tests :: TestTree
 tests =
   testGroup
     "Closure conversion"
-    [ testCase "Example in figure 10.2 in book" testExample
-    -- TODO(DarinM223): Fix with only known functions doesn't create closure
-    -- TODO(DarinM223): Fix with only known functions that creates closure uses
-    -- fresh variable for record name and closure parameter
+    [ testCase "Example in figure 10.2 in book" testExample,
+      testCase "Fix with only known functions doesn't create closure" testNoClosure,
+      testCase "Fix with known closure functions uses fresh vars for record" testClosureFreshVar,
+      testCase "Fix with known recursive closure" testKnownRecClos
     ]
 
 testExample :: IO ()
@@ -275,3 +275,207 @@ testExample = do
               )
           )
       )
+
+testNoClosure :: IO ()
+testNoClosure = do
+  let e0 =
+        Fix
+          [ (1, [2, 3], Primop Plus [Var 2, Var 3] [4] [App (Var 5) [Var 4]]),
+            (5, [6], App (Var 0) [Var 6])
+          ]
+          (App (Var 1) [Int 2, Int 3])
+      esc = escaping e0
+      iter = calcFreeVars 10 (fnsInSameFix e0) (fnsCalledInBody e0) (initIteration e0)
+      e0' = evalState (convert esc iter e0) 100
+  e0'
+    @?= Fix
+      [ ( 1,
+          [2, 3, 101],
+          Primop
+            Plus
+            [Var 2, Var 3]
+            [4]
+            [App (Var 5) [Var 4, Var 101]]
+        ),
+        (5, [6, 102], Select 0 (Var 102) 103 (App (Var 103) [Var 102, Var 6]))
+      ]
+      (App (Var 1) [Int 2, Int 3, Var 0])
+
+testClosureFreshVar :: IO ()
+testClosureFreshVar = do
+  let e0 =
+        Primop
+          Plus
+          [Int 4, Int 5]
+          [7]
+          [ Primop
+              Plus
+              [Int 6, Int 7]
+              [8]
+              [ Fix
+                  [ ( 1,
+                      [2, 3],
+                      Primop
+                        Plus
+                        [Var 2, Var 3]
+                        [4]
+                        [ Primop
+                            Plus
+                            [Var 7, Var 8]
+                            [9]
+                            [ Primop
+                                Plus
+                                [Var 4, Var 9]
+                                [10]
+                                [App (Var 5) [Var 10]]
+                            ]
+                        ]
+                    ),
+                    (5, [6], App (Var 0) [Var 6]),
+                    (11, [], App (Var 1) [Int 5, Int 6])
+                  ]
+                  (App (Var 1) [Int 2, Int 3])
+              ]
+          ]
+      esc = escaping e0
+      iter = calcFreeVars 3 (fnsInSameFix e0) (fnsCalledInBody e0) (initIteration e0)
+      e0' = evalState (convert esc iter e0) 100
+  e0'
+    @?= Primop
+      Plus
+      [Int 4, Int 5]
+      [7]
+      [ Primop
+          Plus
+          [Int 6, Int 7]
+          [8]
+          [ Fix
+              [ ( 1,
+                  [105, 2, 3],
+                  Select
+                    0
+                    (Var 105)
+                    102
+                    ( Select
+                        1
+                        (Var 105)
+                        103
+                        ( Select
+                            2
+                            (Var 105)
+                            104
+                            ( Primop
+                                Plus
+                                [Var 2, Var 3]
+                                [4]
+                                [ Primop
+                                    Plus
+                                    [Var 103, Var 104]
+                                    [9]
+                                    [ Primop
+                                        Plus
+                                        [Var 4, Var 9]
+                                        [10]
+                                        [App (Var 5) [Var 10, Var 102]]
+                                    ]
+                                ]
+                            )
+                        )
+                    )
+                ),
+                (5, [6, 106], Select 0 (Var 106) 107 (App (Var 107) [Var 106, Var 6])),
+                ( 11,
+                  [111],
+                  Select
+                    0
+                    (Var 111)
+                    108
+                    ( Select
+                        1
+                        (Var 111)
+                        109
+                        ( Select
+                            2
+                            (Var 111)
+                            110
+                            (App (Var 1) [Var 111, Int 5, Int 6])
+                        )
+                    )
+                )
+              ]
+              ( Record
+                  [(Var 0, Offp 0), (Var 7, Offp 0), (Var 8, Offp 0)]
+                  101
+                  (App (Var 1) [Var 101, Int 2, Int 3])
+              )
+          ]
+      ]
+
+testKnownRecClos :: IO ()
+testKnownRecClos = do
+  let e0 =
+        Primop
+          Plus
+          [Int 4, Int 5]
+          [7]
+          [ Primop
+              Plus
+              [Int 6, Int 7]
+              [8]
+              [ Fix
+                  [ ( 1,
+                      [2, 3],
+                      Primop
+                        Plus
+                        [Var 2, Var 3]
+                        [4]
+                        [Primop Plus [Var 7, Var 8] [9] [App (Var 1) [Var 4, Var 9]]]
+                    )
+                  ]
+                  (App (Var 1) [Int 2, Int 3])
+              ]
+          ]
+      esc = escaping e0
+      iter = calcFreeVars 3 (fnsInSameFix e0) (fnsCalledInBody e0) (initIteration e0)
+      e0' = evalState (convert esc iter e0) 100
+  e0'
+    @?= Primop
+      Plus
+      [Int 4, Int 5]
+      [7]
+      [ Primop
+          Plus
+          [Int 6, Int 7]
+          [8]
+          [ Fix
+              [ ( 1,
+                  [104, 2, 3],
+                  Select
+                    0
+                    (Var 104)
+                    102
+                    ( Select
+                        1
+                        (Var 104)
+                        103
+                        ( Primop
+                            Plus
+                            [Var 2, Var 3]
+                            [4]
+                            [ Primop
+                                Plus
+                                [Var 102, Var 103]
+                                [9]
+                                [App (Var 1) [Var 104, Var 4, Var 9]]
+                            ]
+                        )
+                    )
+                )
+              ]
+              ( Record
+                  [(Var 7, Offp 0), (Var 8, Offp 0)]
+                  101
+                  (App (Var 1) [Var 101, Int 2, Int 3])
+              )
+          ]
+      ]
