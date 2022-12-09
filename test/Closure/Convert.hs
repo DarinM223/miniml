@@ -169,9 +169,9 @@ testExample = do
                                                 )
                                               ]
                                               ( Record
-                                                  [(Var k', Offp 0), (Var c''', Offp 0), (Var a, Offp 0)]
+                                                  [(Label k', Offp 0), (Var c''', Offp 0), (Var a, Offp 0)]
                                                   k
-                                                  (App (Var h) [Var z', Var k, Var w''])
+                                                  (App (Label h) [Var z', Var k, Var w''])
                                               )
                                           )
                                       )
@@ -179,7 +179,7 @@ testExample = do
                               )
                             ]
                             ( Record
-                                [(Var j', Offp 0), (Var w''', Offp 0), (Var c, Offp 0), (Var z'', Offp 0)]
+                                [(Label j', Offp 0), (Var w''', Offp 0), (Var c, Offp 0), (Var z'', Offp 0)]
                                 j
                                 ( Select
                                     0
@@ -195,7 +195,7 @@ testExample = do
         )
       ]
       ( Record
-          [(Var f', Offp 0), (Var w, Offp 0), (Var z, Offp 0)]
+          [(Label f', Offp 0), (Var w, Offp 0), (Var z, Offp 0)]
           f
           ( Record
               [(Var f, Offp 0), (Int 1, Offp 0)]
@@ -259,7 +259,7 @@ testExample = do
                     )
                   ]
                   ( Record
-                      [(Var m', Offp 0), (Var s', Offp 0), (Var 0, Offp 0), (Var t, Offp 0), (Var e, Offp 0)]
+                      [(Label m', Offp 0), (Label s', Offp 0), (Var 0, Offp 0), (Var t, Offp 0), (Var e, Offp 0)]
                       m
                       ( Offset
                           1
@@ -295,11 +295,11 @@ testNoClosure = do
             Plus
             [Var 2, Var 3]
             [4]
-            [App (Var 5) [Var 4, Var 101]]
+            [App (Label 5) [Var 4, Var 101]]
         ),
         (5, [6, 102], Select 0 (Var 102) 103 (App (Var 103) [Var 102, Var 6]))
       ]
-      (App (Var 1) [Int 2, Int 3, Var 0])
+      (App (Label 1) [Int 2, Int 3, Var 0])
 
 testClosureFreshVar :: IO ()
 testClosureFreshVar = do
@@ -376,7 +376,7 @@ testClosureFreshVar = do
                                         Plus
                                         [Var 4, Var 9]
                                         [10]
-                                        [App (Var 5) [Var 10, Var 102]]
+                                        [App (Label 5) [Var 10, Var 102]]
                                     ]
                                 ]
                             )
@@ -398,7 +398,7 @@ testClosureFreshVar = do
                             2
                             (Var 111)
                             110
-                            (App (Var 1) [Var 111, Int 5, Int 6])
+                            (App (Label 1) [Var 111, Int 5, Int 6])
                         )
                     )
                 )
@@ -406,7 +406,7 @@ testClosureFreshVar = do
               ( Record
                   [(Var 0, Offp 0), (Var 7, Offp 0), (Var 8, Offp 0)]
                   101
-                  (App (Var 1) [Var 101, Int 2, Int 3])
+                  (App (Label 1) [Var 101, Int 2, Int 3])
               )
           ]
       ]
@@ -466,7 +466,7 @@ testKnownRecClos = do
                                 Plus
                                 [Var 102, Var 103]
                                 [9]
-                                [App (Var 1) [Var 104, Var 4, Var 9]]
+                                [App (Label 1) [Var 104, Var 4, Var 9]]
                             ]
                         )
                     )
@@ -475,7 +475,7 @@ testKnownRecClos = do
               ( Record
                   [(Var 7, Offp 0), (Var 8, Offp 0)]
                   101
-                  (App (Var 1) [Var 101, Int 2, Int 3])
+                  (App (Label 1) [Var 101, Int 2, Int 3])
               )
           ]
       ]

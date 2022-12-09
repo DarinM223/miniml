@@ -31,7 +31,8 @@ convert esc (Iteration v c _) = go IM.empty
           freeVars = IS.toList $ closureFreeVars closureRequired
           escClos = IS.toList $ IS.intersection esc closureRequired
       escClos' <- traverse (const fresh) escClos
-      let closure = [(rename sub (Var x), Offp 0) | x <- escClos' ++ freeVars]
+      let closureVars = fmap Label escClos' ++ fmap (rename sub . Var) freeVars
+          closure = (,Offp 0) <$> closureVars
       e' <-
         if IS.null closureRequired
           then go sub e
@@ -73,11 +74,11 @@ convert esc (Iteration v c _) = go IM.empty
       -- Call known closure.
       | Just record <- sub IM.!? f,
         IS.member f c =
-          pure $ App (Var f) (rename sub <$> (Var record : vl))
+          pure $ App (Label f) (rename sub <$> (Var record : vl))
       -- Call known function.
       | Just free <- v IM.!? f =
           let free' = IS.toList $ free \\ noClosure
-           in pure $ App (Var f) (rename sub <$> (vl ++ fmap Var free'))
+           in pure $ App (Label f) (rename sub <$> (vl ++ fmap Var free'))
       -- Call continuation escaping closure.
       | otherwise = callClos (rename sub (Var f)) (rename sub <$> vl)
     callClos f vl = (\w -> Select 0 f w (App (Var w) (f : vl))) <$> fresh
