@@ -26,7 +26,7 @@ convert esc (Iteration v c _) = go IM.empty
     closureFreeVars fs = IS.unions ((v IM.!) <$> IS.elems fs) \\ fs \\ noClosure
 
     go :: IM.IntMap Var -> Cexp -> State Int Cexp
-    go sub (Fix fl@(_ : _) e) = do
+    go !sub (Fix fl@(_ : _) e) = do
       let closureRequired = IS.intersection c $ IS.fromList $ fst3 <$> fl
           freeVars = IS.toList $ closureFreeVars closureRequired
           escClos = IS.toList $ IS.intersection esc closureRequired
@@ -62,9 +62,9 @@ convert esc (Iteration v c _) = go IM.empty
             let sub' = IM.fromList (zip extraArgs extraArgs') <> sub
             (f,vl ++ extraArgs',) <$> go sub' body
       pure $ Fix fl' e'
-    go sub (App (Label f) vl) = go sub (App (Var f) vl)
-    go sub (App (Var f) vl) = rewriteCall sub f vl
-    go sub e = embed <$> traverse (go sub) (project e')
+    go !sub (App (Label f) vl) = go sub (App (Var f) vl)
+    go !sub (App (Var f) vl) = rewriteCall sub f vl
+    go !sub e = embed <$> traverse (go sub) (project e')
       where
         e' = e & shallowValues %~ rename sub
 

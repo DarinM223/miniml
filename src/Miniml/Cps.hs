@@ -45,6 +45,12 @@ data Cexp
 
 instance Hashable Cexp
 
+var :: Traversal' Value Var
+var = traversalVL $ \f e -> case e of
+  Var v -> Var <$> f v
+  Label l -> Label <$> f l
+  v -> pure v
+
 shallowValues :: Traversal' Cexp Value
 shallowValues = traversalVL $ \f e -> case e of
   Record vl w e' ->

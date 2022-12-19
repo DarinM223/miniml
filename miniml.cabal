@@ -32,6 +32,7 @@ library
                     , Miniml.Optimization.Cse
                     , Miniml.Closure.Free
                     , Miniml.Closure.Convert
+                    , Miniml.Spill
                     , Miniml.Semantics
                     , Miniml.Shared
 
@@ -91,6 +92,7 @@ test-suite miniml-test
                     , Optimization.Cse
                     , Closure.Free
                     , Closure.Convert
+                    , Spill
                     , Semantic
     build-depends:    base ^>=4.16
                     , miniml

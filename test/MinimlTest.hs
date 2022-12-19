@@ -8,6 +8,7 @@ import Optimization.Expand qualified as Expand
 import Optimization.Flatten qualified as Flatten
 import Optimization.Hoist qualified as Hoist
 import Optimization.Uncurry qualified as Uncurry
+import Spill qualified
 import Test.Tasty (TestTree, defaultMain, testGroup)
 
 main :: IO ()
@@ -26,5 +27,6 @@ tests =
       Hoist.tests,
       Cse.tests,
       Free.tests,
-      Convert.tests
+      Convert.tests,
+      Spill.tests
     ]
