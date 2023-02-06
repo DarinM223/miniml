@@ -6,8 +6,9 @@ import Data.Functor.Foldable (cata)
 import Data.IntSet qualified as IS
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Tuple.Extra (fst3, thd3, third3)
-import Miniml.Cps (Cexp (..), CexpF (..), Value (..), Var)
+import Miniml.Cps (Cexp (..), CexpF (..), Value (..), Var, var)
 import Miniml.Shared (Primop (Alength, Slength))
+import Optics (headOf)
 
 constr :: Cexp -> Cexp -> Cexp
 constr (Record vl w _) = Record vl w
@@ -55,15 +56,11 @@ freeVars = go IS.empty
 escaping :: Cexp -> IS.IntSet
 escaping = flip evalState IS.empty . cata go
   where
-    var (Var v) = Just v
-    var (Label l) = Just l
-    var _ = Nothing
-
     go :: CexpF (State IS.IntSet IS.IntSet) -> State IS.IntSet IS.IntSet
     go (RecordF fl _ e) = do
-      escs <- IS.intersection (IS.fromList (mapMaybe (var . fst) fl)) <$> get
+      escs <- IS.intersection (IS.fromList (mapMaybe (headOf var . fst) fl)) <$> get
       IS.union escs <$> e
-    go (AppF _ vl) = IS.intersection (IS.fromList (mapMaybe var vl)) <$> get
+    go (AppF _ vl) = IS.intersection (IS.fromList (mapMaybe (headOf var) vl)) <$> get
     go e@(FixF fl _) =
       traverse_ (modify' . IS.insert . fst3) fl >> fold <$> sequence e
     go e = fold <$> sequence e

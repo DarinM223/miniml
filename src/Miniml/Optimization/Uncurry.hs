@@ -9,19 +9,14 @@ import Data.Foldable (foldrM)
 import Data.Functor ((<&>))
 import Data.Functor.Foldable (embed, project)
 import Data.List.Extra (unsnoc)
-import Data.Monoid (Any (Any, getAny))
 import GHC.Generics (Generic)
-import Miniml.Cps (Cexp (App, Fix), Value (Label, Var), Var)
+import Miniml.Cps (Cexp (App, Fix), Value (Var), Var, var)
 import Miniml.Shared (fresh)
-import Optics (foldMapOf, gplate, zoom)
+import Optics (gplate, zoom, (%), anyOf)
 import Optics.State.Operators ((%=))
 
 freeIn :: Var -> Cexp -> Bool
-freeIn v = getAny . foldMapOf (gplate @Value) (Any . try)
-  where
-    try (Var v') = v == v'
-    try (Label l) = v == l
-    try _ = False
+freeIn v = anyOf (gplate @Value % var) (== v)
 
 data UncurryState = UncurryState
   { counter :: {-# UNPACK #-} !Int,

@@ -10,18 +10,14 @@ import Data.Maybe (fromMaybe)
 import Data.Traversable (for)
 import Data.Tuple.Extra (fst3)
 import Miniml.Closure.Free (Iteration (Iteration))
-import Miniml.Cps (Cexp (..), Value (Label, Var), Var, shallowValues)
+import Miniml.Cps (Cexp (..), Value (Label, Var), Var, shallowValues, var)
 import Miniml.Shared (Access (Offp), fresh)
 import Optics ((%~), (&))
 
 convert :: IS.IntSet -> Iteration -> Cexp -> State Int Cexp
 convert esc (Iteration v c _) = go IM.empty
   where
-    rename :: IM.IntMap Var -> Value -> Value
-    rename sub (Var x) | Just x' <- sub IM.!? x = Var x'
-    rename sub (Label l) | Just l' <- sub IM.!? l = Label l'
-    rename _ x = x
-
+    rename sub x = x & var %~ \x' -> fromMaybe x' (IM.lookup x' sub)
     noClosure = IS.fromList (IM.keys v) \\ c
     closureFreeVars fs = IS.unions ((v IM.!) <$> IS.elems fs) \\ fs \\ noClosure
 
