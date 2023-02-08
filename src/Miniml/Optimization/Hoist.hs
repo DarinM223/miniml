@@ -4,11 +4,11 @@ import Control.Monad.State.Strict (State, evalState, get, modify')
 import Data.Foldable (fold, foldl', traverse_)
 import Data.Functor.Foldable (cata)
 import Data.IntSet qualified as IS
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe)
 import Data.Tuple.Extra (fst3, thd3, third3)
 import Miniml.Cps (Cexp (..), CexpF (..), Value (..), Var, var)
 import Miniml.Shared (Primop (Alength, Slength))
-import Optics (headOf)
+import Optics ((^..), folded, (%), _1, filtered, toListOf)
 
 constr :: Cexp -> Cexp -> Cexp
 constr (Record vl w _) = Record vl w
@@ -34,9 +34,7 @@ fixFreeVars fl (_, vl, e) = freeVars e IS.\\ IS.fromList (fl ++ vl)
 freeVars :: Cexp -> IS.IntSet
 freeVars = go IS.empty
   where
-    free env (Label l) = free env (Var l)
-    free env (Var v) | not (IS.member v env) = IS.singleton v
-    free _ _ = IS.empty
+    free env = IS.fromList . toListOf (var % filtered (`IS.notMember` env))
 
     go env (Record vl w e) =
       IS.unions (go (IS.insert w env) e : fmap (free env . fst) vl)
@@ -58,9 +56,9 @@ escaping = flip evalState IS.empty . cata go
   where
     go :: CexpF (State IS.IntSet IS.IntSet) -> State IS.IntSet IS.IntSet
     go (RecordF fl _ e) = do
-      escs <- IS.intersection (IS.fromList (mapMaybe (headOf var . fst) fl)) <$> get
+      escs <- IS.intersection (IS.fromList (fl ^.. folded % _1 % var)) <$> get
       IS.union escs <$> e
-    go (AppF _ vl) = IS.intersection (IS.fromList (mapMaybe (headOf var) vl)) <$> get
+    go (AppF _ vl) = IS.intersection (IS.fromList (vl ^.. folded % var)) <$> get
     go e@(FixF fl _) =
       traverse_ (modify' . IS.insert . fst3) fl >> fold <$> sequence e
     go e = fold <$> sequence e
@@ -77,10 +75,10 @@ hoist esc = stop . cata go
     -- a list of the passed up Fixes, and the rest of the expression.
     go (RecordF vl w (_, fl, e)) = (IS.empty, [], Record vl w (fix fl e))
     go (SelectF i v w (m, fl, e))
-      | not (IS.member w m) = (m, fl, push (Select i v w) e)
+      | IS.notMember w m = (m, fl, push (Select i v w) e)
       | otherwise = (IS.empty, [], push (Select i v w) (fix fl e))
     go (OffsetF i v w (m, fl, e))
-      | not (IS.member w m) = (m, fl, push (Offset i v w) e)
+      | IS.notMember w m = (m, fl, push (Offset i v w) e)
       | otherwise = (IS.empty, [], push (Offset i v w) (fix fl e))
     go (AppF f vl) = (IS.empty, [], App f vl)
     go (FixF fl (m, fl', e)) =

@@ -17,7 +17,7 @@ import Optics ((%~), (&))
 convert :: IS.IntSet -> Iteration -> Cexp -> State Int Cexp
 convert esc (Iteration v c _) = go IM.empty
   where
-    rename sub x = x & var %~ \x' -> fromMaybe x' (IM.lookup x' sub)
+    rename sub x = x & var %~ \x' -> IM.findWithDefault x' x' sub
     noClosure = IS.fromList (IM.keys v) \\ c
     closureFreeVars fs = IS.unions ((v IM.!) <$> IS.elems fs) \\ fs \\ noClosure
 

@@ -16,7 +16,7 @@ import Data.IntSet qualified as IS
 import GHC.Generics (Generic)
 import Miniml.Cps (Cexp (..), Value (..), Var)
 import Miniml.Shared (Access (Selp), Primop (..))
-import Optics (at', gplate, traverseOf, (%), (^.), _Just)
+import Optics (at', gplate, traverseOf, (%), (^.), _Just, anyOf)
 import Optics.State.Operators ((%=), (.=), (?=))
 import Optics.Zoom (zoom)
 
@@ -80,7 +80,7 @@ gatherInfo irreducible = flip execState IM.empty . go
     go (Fix fns rest) = do
       for_ fns $ \(fn, params, e) -> do
         traverse_ enterSimple params
-        enter fn $ FunctionInfo $ F params e 0 (not (IS.member fn irreducible)) False
+        enter fn $ FunctionInfo $ F params e 0 (IS.notMember fn irreducible) False
       traverse_ (\(_, _, e) -> go e) fns
       go rest
       for_ fns $ \(fn, _, _) -> do
@@ -137,11 +137,11 @@ newname :: Var -> Value -> State ContractState ()
 newname k v = #env %= IM.insert k v
 
 used :: Var -> State ContractState Bool
-used v = zoom #info $ gets $ \m -> m IM.! v ^. #used > 0
+used v = gets $ anyOf (#info % at' v % _Just % #used) (> 0)
 
 lookupInfo :: Value -> State ContractState Info
 lookupInfo (Label l) = lookupInfo (Var l)
-lookupInfo (Var v) = zoom #info $ gets $ \m -> m IM.! v
+lookupInfo (Var v) = zoom #info $ gets (IM.! v)
 lookupInfo v = error $ "Invalid value: " ++ show v
 
 reduce :: Env -> ContractInfo -> Cexp -> (Int, Cexp)
