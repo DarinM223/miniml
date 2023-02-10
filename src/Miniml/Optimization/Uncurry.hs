@@ -12,11 +12,11 @@ import Data.List.Extra (unsnoc)
 import GHC.Generics (Generic)
 import Miniml.Cps (Cexp (App, Fix), Value (Var), Var, var)
 import Miniml.Shared (fresh)
-import Optics (gplate, zoom, (%), anyOf)
+import Optics (gplate, zoom, (%), elemOf)
 import Optics.State.Operators ((%=))
 
 freeIn :: Var -> Cexp -> Bool
-freeIn v = anyOf (gplate @Value % var) (== v)
+freeIn = elemOf (gplate @Value % var)
 
 data UncurryState = UncurryState
   { counter :: {-# UNPACK #-} !Int,
