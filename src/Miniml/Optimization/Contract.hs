@@ -16,7 +16,7 @@ import Data.IntSet qualified as IS
 import GHC.Generics (Generic)
 import Miniml.Cps (Cexp (..), Value (..), Var)
 import Miniml.Shared (Access (Selp), Primop (..))
-import Optics (at', gplate, traverseOf, (%), (^.), _Just, anyOf)
+import Optics (anyOf, at', gplate, traverseOf, (%), (^.), _Just)
 import Optics.State.Operators ((%=), (.=), (?=))
 import Optics.Zoom (zoom)
 

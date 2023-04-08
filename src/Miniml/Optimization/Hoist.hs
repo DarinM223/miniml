@@ -8,7 +8,7 @@ import Data.Maybe (fromMaybe)
 import Data.Tuple.Extra (fst3, thd3, third3)
 import Miniml.Cps (Cexp (..), CexpF (..), Value (..), Var, var)
 import Miniml.Shared (Primop (Alength, Slength))
-import Optics ((^..), folded, (%), _1, filtered, toListOf)
+import Optics (filtered, folded, toListOf, (%), (^..), _1)
 
 constr :: Cexp -> Cexp -> Cexp
 constr (Record vl w _) = Record vl w

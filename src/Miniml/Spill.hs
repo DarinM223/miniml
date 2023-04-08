@@ -8,7 +8,7 @@ import Data.List (elemIndex, sortOn)
 import Miniml.Cps (Cexp (..), Value (..), Var, shallowValues, var)
 import Miniml.Optimization.Hoist (bindings, freeVars)
 import Miniml.Shared (Access (..), fresh)
-import Optics (gplate, (%), (%~), (&), (^..), elemOf)
+import Optics (elemOf, gplate, (%), (%~), (&), (^..))
 
 root :: Cexp -> [Cexp] -> Cexp
 root (Record vl w _) = Record vl w . head

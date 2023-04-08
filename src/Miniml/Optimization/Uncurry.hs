@@ -12,7 +12,7 @@ import Data.List.Extra (unsnoc)
 import GHC.Generics (Generic)
 import Miniml.Cps (Cexp (App, Fix), Value (Var), Var, var)
 import Miniml.Shared (fresh)
-import Optics (gplate, zoom, (%), elemOf)
+import Optics (elemOf, gplate, zoom, (%))
 import Optics.State.Operators ((%=))
 
 freeIn :: Var -> Cexp -> Bool

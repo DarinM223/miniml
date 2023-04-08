@@ -14,7 +14,7 @@ import Data.IntMap.Strict qualified as IM
 import GHC.Generics (Generic)
 import Miniml.Cps (Cexp (..), Value (Int, Label, Var), Var, var)
 import Miniml.Shared (fresh)
-import Optics (at', zoom, (%), (%~), (&), _Just, to, headOf, foldrOf)
+import Optics (at', foldrOf, headOf, to, zoom, (%), (%~), (&), _Just)
 import Optics.State.Operators ((%=))
 
 data Info
