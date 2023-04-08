@@ -4,11 +4,11 @@ import Control.Monad.State.Strict (State)
 import Data.Foldable (toList)
 import Data.Functor.Foldable (project)
 import Data.IntSet qualified as IS
-import Data.List (elemIndex, find, sortOn)
+import Data.List (elemIndex, sortOn)
 import Miniml.Cps (Cexp (..), Value (..), Var, shallowValues, var)
 import Miniml.Optimization.Hoist (bindings, freeVars)
 import Miniml.Shared (Access (..), fresh)
-import Optics (gplate, (%), (%~), (&), (^..))
+import Optics (elemOf, gplate, (%), (%~), (&), (^..))
 
 root :: Cexp -> [Cexp] -> Cexp
 root (Record vl w _) = Record vl w . head
@@ -33,10 +33,9 @@ nextUse v = go 0 . (: [])
         -- Go to the next level if none are found in this one.
         checkLevel [] [] = infinity
         checkLevel [] next = go (level + 1) next
-        checkLevel (e : es) next =
-          case find (== v) (e ^.. shallowValues % var) of
-            Just _ -> level
-            Nothing -> checkLevel es (toList (project e) ++ next)
+        checkLevel (e : es) next
+          | elemOf (shallowValues % var) v e = level
+          | otherwise = checkLevel es (toList (project e) ++ next)
 
 nextNDups :: Int -> IS.IntSet -> Cexp -> IS.IntSet
 nextNDups 0 _ _ = IS.empty

@@ -12,9 +12,9 @@ import Data.Foldable (foldl', for_, traverse_)
 import Data.Functor.Foldable (embed, project)
 import Data.IntMap.Strict qualified as IM
 import GHC.Generics (Generic)
-import Miniml.Cps (Cexp (..), Value (Int, Label, Var), Var)
+import Miniml.Cps (Cexp (..), Value (Int, Label, Var), Var, var)
 import Miniml.Shared (fresh)
-import Optics (at', zoom, (%), (%~), (&), _Just)
+import Optics (at', foldrOf, headOf, to, zoom, (%), (%~), (&), _Just)
 import Optics.State.Operators ((%=))
 
 data Info
@@ -152,9 +152,7 @@ argumentSavings _ _ _ = 0
 rename :: IM.IntMap Value -> Cexp -> State Int Cexp
 rename = go
   where
-    look env (Label l) | Just l' <- IM.lookup l env = l'
-    look env (Var v) | Just v' <- IM.lookup v env = v'
-    look _ v = v
+    look env v = foldrOf (var % to (env IM.!?) % _Just) const v v
 
     go env (Record vl w e) = do
       w' <- fresh
@@ -196,13 +194,9 @@ expand r info e0 = state $ \(!tmp) ->
         runState (go 0 e0) (ExpandState IM.empty tmp 0)
    in ((clicks, e0'), tmp')
   where
-    get (Label v) = get (Var v)
-    get (Var v) = IM.lookup v info
-    get _ = Nothing
-
     go :: Int -> Cexp -> State ExpandState Cexp
-    go level (App f xs) = do
-      case get f of
+    go level (App f xs) =
+      case headOf (var % to (info IM.!?) % _Just) f of
         Just (FunctionInfo (F args body _ calls size))
           | calls > 0 && heuristic < constC - level * constD - r * constE -> do
               #clicks %= (+ 1)
