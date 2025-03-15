@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-x-partial #-}
 module Miniml.Spill where
 
 import Control.Monad.State.Strict (State)

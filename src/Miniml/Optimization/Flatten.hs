@@ -1,4 +1,5 @@
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE OrPatterns #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
@@ -145,9 +146,8 @@ gatherInfo maxRegs e0 = state $ \(!tmp) ->
         updateParam usageInfo arity (Var v) =
           case (arity, IM.lookup v usageInfo) of
             (Bottom, Just (RecordInfo sz)) -> Count sz False
-            (Bottom, _) -> Unknown
             (Unknown, Just (RecordInfo sz)) -> Count sz True
-            (Unknown, _) -> Unknown
+            (Bottom, _); (Unknown, _) -> Unknown
             (Count n _, Just (RecordInfo sz)) -> if n == sz then arity else Top
             (Count n _, _) -> Count n True
             (Top, _) -> Top

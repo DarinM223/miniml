@@ -1,10 +1,10 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OrPatterns #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
 module Miniml.Optimization.Contract (gatherInfo, reduce) where
 
-import Control.Applicative (liftA2)
 import Control.Monad (filterM, when)
 import Control.Monad.Extra (ifM, notM, unlessM)
 import Control.Monad.State.Strict (State, execState, get, gets, modify', runState)
@@ -225,19 +225,16 @@ reduce env0 info0 e0 =
     go e@(Primop op [a, b] [v] [r])
       | op `elem` [Plus, Minus, Times, Div, Fadd, Fsub, Fmul, Fdiv] = do
           Info _ n <- lookupInfo (Var v)
+          x <- rename a
+          y <- rename b
           -- Don't worry about exceptions with arithmetic, rely on overflow
-          liftA2 (op,,) (rename a) (rename b) >>= \case
-            (Times, Int 1, x@(Var _)) -> const' n x
-            (Times, x@(Var _), Int 1) -> const' n x
-            (Times, Int 0, _) -> const' n (Int 0)
-            (Times, _, Int 0) -> const' n (Int 0)
+          case (op, x, y) of
+            (Times, Int 1, Var _); (Plus, Int 0, Var _) -> const' n y
+            (Times, Var _, Int 1); (Div, Var _, Int 1); (Plus, Var _, Int 0); (Minus, Var _, Int 0) -> const' n x
+            (Times, Int 0, _); (Times, _, Int 0) -> const' n (Int 0)
             (Times, Int i, Int j) -> const' n (Int (i * j))
-            (Div, x@(Var _), Int 1) -> const' n x
             (Div, Int i, Int j) | j /= 0 -> const' n (Int (i `quot` j))
-            (Plus, x@(Var _), Int 0) -> const' n x
-            (Plus, Int 0, x@(Var _)) -> const' n x
             (Plus, Int i, Int j) -> const' n (Int (i + j))
-            (Minus, x@(Var _), Int 0) -> const' n x
             (Minus, Int i, Int j) -> const' n (Int (i - j))
             _ -> embed <$> traverse go (project e)
       where

@@ -42,7 +42,7 @@ library
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
-    build-depends:    base ^>=4.17
+    build-depends:    base ^>=4.21
                     , containers
                     , extra
                     , hashable
@@ -72,7 +72,7 @@ executable miniml
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
     build-depends:
-        base ^>=4.17,
+        base ^>=4.21,
         miniml
 
     hs-source-dirs:   src-exe
@@ -96,7 +96,7 @@ test-suite miniml-test
                     , Closure.Lift
                     , Spill
                     , Semantic
-    build-depends:    base ^>=4.17
+    build-depends:    base ^>=4.21
                     , miniml
                     , containers
                     , extra

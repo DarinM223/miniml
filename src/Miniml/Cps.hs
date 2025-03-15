@@ -1,10 +1,11 @@
+{-# LANGUAGE OrPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Miniml.Cps where
 
-import Control.Applicative (liftA2, liftA3)
+import Control.Applicative (liftA3)
 import Control.Monad (replicateM)
 import Control.Monad.Cont (ContT (ContT, runContT))
 import Control.Monad.State.Strict (MonadState, State)
@@ -67,17 +68,15 @@ makeBaseFunctor ''Cexp
 data PrimopResult = OneResult | NoResult | Branching
 
 primopResultType :: Primop -> PrimopResult
-primopResultType op
-  | op `elem` [Sethdlr, Store, Assign, Update, UnboxedAssign, UnboxedUpdate] = NoResult
-  | op `elem` [Ieql, Ineq, Lt, Leq, Gt, Geq, Feql, Fneq, Fge, Fgt, Fle, Flt, Sequals, Rangechk, Boxed] = Branching
-  | otherwise = OneResult
+primopResultType (Sethdlr; Store; Assign; Update; UnboxedAssign; UnboxedUpdate) = NoResult
+primopResultType (Ieql; Ineq; Lt; Leq; Gt; Geq; Feql; Fneq; Fge; Fgt; Fle; Flt; Sequals; Rangechk; Boxed) = Branching
+primopResultType _ = OneResult
 
 primopNumArgs :: Primop -> Int
-primopNumArgs op
-  | op `elem` [Negate, Boxed, Bang, Makeref, MakerefUnboxed, Alength, Slength, Sethdlr] = 1
-  | op `elem` [Update, UnboxedUpdate, Store] = 3
-  | op == Gethdlr = 0
-  | otherwise = 2
+primopNumArgs (Negate; Boxed; Bang; Makeref; MakerefUnboxed; Alength; Slength; Sethdlr) = 1
+primopNumArgs (Update; UnboxedUpdate; Store) = 3
+primopNumArgs Gethdlr = 0
+primopNumArgs _ = 2
 
 primopArgs :: Applicative f => Primop -> L.Lexp -> (L.Lexp -> f a) -> f [a]
 primopArgs i e go = case primopNumArgs i of
@@ -160,9 +159,7 @@ convert lexp = unConvertM $ do
       ContT $ \c -> Fix <$> traverse g (zip h b) <*> runContT (go e) c
     go (L.Con (L.Constant i) _) = go $ L.Int i
     go (L.Con (L.Tagged i) e) = go $ L.Record [e, L.Int i]
-    go (L.Con L.Transparent e) = go e
-    go (L.Con L.TransB e) = go e
-    go (L.Con L.TransU e) = go e
+    go (L.Con (L.Transparent; L.TransB; L.TransU) e) = go e
     go (L.Con (L.Variable v p) e) = do
       w <- go e
       x <- fresh
@@ -173,9 +170,7 @@ convert lexp = unConvertM $ do
     go (L.Con L.Undecided _) = error "Con cannot be applied to Undecided"
     go (L.Con L.Ref _) = error "Con cannot be applied to Ref"
     go (L.Decon (L.Tagged _) e) = go $ L.Select 0 e
-    go (L.Decon L.Transparent e) = go e
-    go (L.Decon L.TransB e) = go e
-    go (L.Decon L.TransU e) = go e
+    go (L.Decon (L.Transparent; L.TransB; L.TransU) e) = go e
     go (L.Decon (L.Variable _ _) e) = go $ L.Select 0 e
     go (L.Decon L.Undecided _) = error "Decon cannot be applied to Undecided"
     go (L.Decon (L.VariableC v p) _) =

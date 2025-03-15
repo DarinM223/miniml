@@ -1,6 +1,6 @@
 module Miniml.Closure.Free where
 
-import Data.Foldable (fold, foldMap', foldl')
+import Data.Foldable (fold, foldMap')
 import Data.Functor.Foldable (cata, project)
 import Data.IntMap.Strict qualified as IM
 import Data.IntSet (intersection, (\\))

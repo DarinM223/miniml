@@ -5,10 +5,9 @@
 
 module Miniml.Optimization.Expand (gatherInfo, expand) where
 
-import Control.Applicative (liftA2)
 import Control.Monad.State.Strict (State, execState, modify', runState, state)
 import Data.Bifunctor (first)
-import Data.Foldable (foldl', for_, traverse_)
+import Data.Foldable (for_, traverse_)
 import Data.Functor.Foldable (embed, project)
 import Data.IntMap.Strict qualified as IM
 import GHC.Generics (Generic)

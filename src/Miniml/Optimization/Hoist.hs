@@ -1,7 +1,8 @@
+{-# LANGUAGE OrPatterns #-}
 module Miniml.Optimization.Hoist where
 
 import Control.Monad.State.Strict (State, evalState, get, modify')
-import Data.Foldable (fold, foldl', traverse_)
+import Data.Foldable (fold, traverse_)
 import Data.Functor.Foldable (cata)
 import Data.IntSet qualified as IS
 import Data.Maybe (fromMaybe)
@@ -23,9 +24,8 @@ bindings :: Cexp -> [Var]
 bindings (Record _ w _) = [w]
 bindings (Select _ _ w _) = [w]
 bindings (Offset _ _ w _) = [w]
-bindings (App _ _) = []
 bindings (Fix fl _) = fst3 <$> fl
-bindings (Switch _ _) = []
+bindings (Switch _ _; App _ _) = []
 bindings (Primop _ _ wl _) = wl
 
 fixFreeVars :: [Var] -> (Var, [Var], Cexp) -> IS.IntSet
