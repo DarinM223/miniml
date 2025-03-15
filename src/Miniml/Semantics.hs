@@ -1,4 +1,5 @@
 {-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE OrPatterns #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Miniml.Semantics where
@@ -59,7 +60,7 @@ fetch :: Store loc answer m -> loc -> DValue loc answer m
 fetch (_, f, _) = f
 
 upd ::
-  Eq loc =>
+  (Eq loc) =>
   Store loc answer m ->
   loc ->
   DValue loc answer m ->
@@ -69,7 +70,7 @@ upd (n, f, g) l v = (n, \i -> if i == l then v else f i, g)
 fetchi :: Store loc answer m -> loc -> Int
 fetchi (_, _, g) = g
 
-updi :: Eq loc => Store loc answer m -> loc -> Int -> Store loc answer m
+updi :: (Eq loc) => Store loc answer m -> loc -> Int -> Store loc answer m
 updi (n, f, g) l v = (n, f, \i -> if i == l then v else g i)
 
 eqlist ::
@@ -142,10 +143,10 @@ convertValue _ (Cps.String s) = String s
 convertValue env (Cps.Var v) = env v
 convertValue env (Cps.Label v) = env v
 
-bind :: Eq t => (t -> p) -> t -> p -> t -> p
+bind :: (Eq t) => (t -> p) -> t -> p -> t -> p
 bind env v d w = if v == w then d else env w
 
-bindn :: Eq t => (t -> p) -> [t] -> [p] -> t -> p
+bindn :: (Eq t) => (t -> p) -> [t] -> [p] -> t -> p
 bindn env (v : vl) (d : dl) = bindn (bind env v d) vl dl
 bindn env _ _ = env
 
@@ -156,7 +157,7 @@ evalPath (Record l i) (Cps.Selp j p) = evalPath (l !! (i + j)) p
 evalPath _ _ = error "evalPath: invalid pattern"
 
 evalPrim ::
-  Constr loc answer m =>
+  (Constr loc answer m) =>
   Cps.Primop ->
   [DValue loc answer m] ->
   [[DValue loc answer m] -> Store loc answer m -> m answer] ->
@@ -179,12 +180,7 @@ evalPrim Cps.Rangechk [Int i, Int j] [t, f]
   | otherwise = if i < 0 then f [] else if i < j then t [] else f []
 evalPrim Cps.Boxed [Int i] [t, f] = \s ->
   if i < 0 || i > 255 then arbitrarily ?args (t [] s) (f [] s) else f [] s
-evalPrim Cps.Boxed [Record _ _] [t, _] = t []
-evalPrim Cps.Boxed [String _] [t, _] = t []
-evalPrim Cps.Boxed [Array _] [t, _] = t []
-evalPrim Cps.Boxed [Uarray _] [t, _] = t []
-evalPrim Cps.Boxed [Bytearray _] [t, _] = t []
-evalPrim Cps.Boxed [Func _] [t, _] = t []
+evalPrim Cps.Boxed [(Record _ _; String _; Array _; Uarray _; Bytearray _; Func _)] [t, _] = t []
 evalPrim Cps.Bang [a] [c] = evalPrim Cps.Subscript [a, Int 0] [c]
 evalPrim Cps.Subscript [Array a, Int n] [c] = \s -> c [fetch s (a !! n)] s
 evalPrim Cps.Subscript [Uarray a, Int n] [c] = \s -> c [Int (fetchi s (a !! n))] s
@@ -227,7 +223,7 @@ evalPrim p args _ =
   error $ "evalPrim: invalid pattern " ++ show p ++ " and args: " ++ show args
 
 denotExpr ::
-  Constr loc answer m =>
+  (Constr loc answer m) =>
   (Cps.Var -> DValue loc answer m) ->
   Cps.Cexp ->
   Store loc answer m ->
@@ -261,7 +257,7 @@ type Eval loc answer m =
 env0 :: Env loc answer m
 env0 _ = throw Undefined
 
-cps :: Constr loc answer m => Eval loc answer m
+cps :: (Constr loc answer m) => Eval loc answer m
 cps vl dl = denotExpr (bindn env0 vl dl)
 
 withArgs ::

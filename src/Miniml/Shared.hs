@@ -60,6 +60,6 @@ data Primop
 
 instance Hashable Primop
 
-fresh :: MonadState Int m => m Int
+fresh :: (MonadState Int m) => m Int
 fresh = modify' (+ 1) >> get
 {-# INLINE fresh #-}

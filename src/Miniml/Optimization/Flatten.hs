@@ -30,11 +30,11 @@ data Arity
     Unknown
   | -- | Is a known record.
     Count
+      -- | Number of fields in the record.
       {-# UNPACK #-} !Int
-      -- ^ Number of fields in the record.
-      !Bool
-      -- ^ True if at some function calls this parameter was unknown.
+      -- | True if at some function calls this parameter was unknown.
       -- False if at all function calls this parameter was a known record.
+      !Bool
   | -- | Cannot flatten this argument. Cannot be updated.
     Top
   deriving (Show)

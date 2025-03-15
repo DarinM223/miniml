@@ -1,4 +1,5 @@
 {-# LANGUAGE OrPatterns #-}
+
 module Miniml.Optimization.Hoist where
 
 import Control.Monad.State.Strict (State, evalState, get, modify')

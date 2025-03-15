@@ -1,6 +1,6 @@
 module Main where
 
-import qualified Miniml (someFunc)
+import Miniml qualified (someFunc)
 
 main :: IO ()
 main = Miniml.someFunc

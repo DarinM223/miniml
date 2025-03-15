@@ -78,7 +78,7 @@ primopNumArgs (Update; UnboxedUpdate; Store) = 3
 primopNumArgs Gethdlr = 0
 primopNumArgs _ = 2
 
-primopArgs :: Applicative f => Primop -> L.Lexp -> (L.Lexp -> f a) -> f [a]
+primopArgs :: (Applicative f) => Primop -> L.Lexp -> (L.Lexp -> f a) -> f [a]
 primopArgs i e go = case primopNumArgs i of
   1 -> (: []) <$> go e
   _ -> case e of
@@ -169,9 +169,8 @@ convert lexp = unConvertM $ do
       ContT $ \c -> Record [(Var v, p)] w . Select 0 (Var w) x <$> c (Var x)
     go (L.Con L.Undecided _) = error "Con cannot be applied to Undecided"
     go (L.Con L.Ref _) = error "Con cannot be applied to Ref"
-    go (L.Decon (L.Tagged _) e) = go $ L.Select 0 e
+    go (L.Decon (L.Tagged _; L.Variable _ _) e) = go $ L.Select 0 e
     go (L.Decon (L.Transparent; L.TransB; L.TransU) e) = go e
-    go (L.Decon (L.Variable _ _) e) = go $ L.Select 0 e
     go (L.Decon L.Undecided _) = error "Decon cannot be applied to Undecided"
     go (L.Decon (L.VariableC v p) _) =
       error $ "Decon cannot be applied to VariableC: " ++ show v ++ ", " ++ show p
