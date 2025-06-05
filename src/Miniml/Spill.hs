@@ -28,11 +28,15 @@ rename v0 v0' v = if v == v0 then v0' else v
 nextUse :: Var -> Cexp -> Int
 nextUse v = go 0 . (: [])
   where
+    infinity :: Int
     infinity = 1000000
+
+    go :: Int -> [Cexp] -> Int
     go level a = checkLevel a []
       where
         -- Check all nodes in the current level.
         -- Go to the next level if none are found in this one.
+        checkLevel :: [Cexp] -> [Cexp] -> Int
         checkLevel [] [] = infinity
         checkLevel [] next = go (level + 1) next
         checkLevel (e : es) next
@@ -82,22 +86,35 @@ f !n !r !u !d !sc !sv e
       let u' = IS.intersection (u <> w) vAfter
       root e <$> traverse (f n w u' d' scAfter svAfter) c
   where
-    f' = a IS.\\ (u <> d')
+    mustSpill :: IS.IntSet -> Bool
     mustSpill s = IS.size (s <> IS.intersection u vAfter) > n - IS.size svAfter
+
+    get :: Var -> (Value, Access)
     get v
       | IS.member v d' || IS.member v u = (Var v, Offp 0)
       | Just i <- elemIndex v (IS.elems sc) =
           (Var (IS.findMin sv), Selp i (Offp 0))
       | otherwise = (Var v, Offp 0)
+
+    f', d'', d', scAfter, svAfter :: IS.IntSet
+    f' = a IS.\\ (u <> d')
     d'' = IS.intersection (u <> d') vBefore
     d' = nextNDups nDup (IS.intersection d vBefore) e
-    nDup = n - IS.size sBefore - IS.size (IS.intersection u vBefore <> r)
     scAfter = if noSpillYet then IS.empty else sc
     svAfter = if noSpillYet then IS.empty else sv
+
+    nDup :: Int
+    nDup = n - IS.size sBefore - IS.size (IS.intersection u vBefore <> r)
+
+    noSpillYet :: Bool
     noSpillYet = IS.null (IS.intersection sc vAfter)
+
+    sBefore, vBefore, vAfter, a, w :: IS.IntSet
     sBefore = if IS.null sc then IS.empty else sv
     vBefore = freeVars e
     vAfter = IS.unions (freeVars <$> c)
     a = IS.fromList $ e ^.. shallowValues % var
     w = IS.fromList $ bindings e
+
+    c :: [Cexp]
     c = toList $ project e

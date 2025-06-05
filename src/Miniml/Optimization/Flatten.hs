@@ -147,7 +147,7 @@ gatherInfo maxRegs e0 = state $ \(!tmp) ->
           case (arity, IM.lookup v usageInfo) of
             (Bottom, Just (RecordInfo sz)) -> Count sz False
             (Unknown, Just (RecordInfo sz)) -> Count sz True
-            (Bottom, _); (Unknown, _) -> Unknown
+            ((Bottom; Unknown), _) -> Unknown
             (Count n _, Just (RecordInfo sz)) -> if n == sz then arity else Top
             (Count n _, _) -> Count n True
             (Top, _) -> Top

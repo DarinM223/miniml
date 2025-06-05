@@ -29,6 +29,7 @@ reduce maxRegisters e0 = state $ \(!tmp) ->
   let (e0', UncurryState !tmp' !clicks) = runState (go e0) (UncurryState tmp 0)
    in ((clicks, e0'), tmp')
   where
+    go :: Cexp -> State UncurryState Cexp
     go (Fix fl e) =
       Fix <$> foldrM (\fd acc -> uncurryFn fd <&> (++ acc)) [] fl <*> go e
     go e = embed <$> traverse go (project e)
@@ -52,5 +53,8 @@ reduce maxRegisters e0 = state $ \(!tmp) ->
           (fn :) <$> uncurryFn (f', vs ++ us, e)
     uncurryFn (f, vs, e) = (: []) . (f,vs,) <$> go e
 
+    fresh' :: State UncurryState Var
     fresh' = zoom #counter fresh
+
+    check :: [Var] -> Bool
     check l = length l <= maxRegisters

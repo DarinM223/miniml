@@ -34,6 +34,7 @@ data CseState = CseState
 rename :: Value -> State CseState Value
 rename = zoom #env . gets . flip go
   where
+    go :: IM.IntMap Var -> Value -> Value
     go env (Var v) | Just v' <- IM.lookup v env = go env (Var v')
     go env (Label v) | Just v' <- IM.lookup v env = go env (Label v')
     go _ v = v

@@ -20,6 +20,7 @@ data EtaState = EtaState
 rename :: Value -> State EtaState Value
 rename = zoom #env . gets . flip go
   where
+    go :: IM.IntMap Value -> Value -> Value
     go env (Var v) | Just v' <- IM.lookup v env = go env v'
     go env (Label v) | Just v' <- IM.lookup v env = go env v'
     go _ v = v

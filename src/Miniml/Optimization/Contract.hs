@@ -230,7 +230,7 @@ reduce env0 info0 e0 =
           -- Don't worry about exceptions with arithmetic, rely on overflow
           case (op, x, y) of
             (Times, Int 1, Var _); (Plus, Int 0, Var _) -> const' n y
-            (Times, Var _, Int 1); (Div, Var _, Int 1); (Plus, Var _, Int 0); (Minus, Var _, Int 0) -> const' n x
+            ((Times; Div), Var _, Int 1); ((Plus; Minus), Var _, Int 0) -> const' n x
             (Times, Int 0, _); (Times, _, Int 0) -> const' n (Int 0)
             (Times, Int i, Int j) -> const' n (Int (i * j))
             (Div, Int i, Int j) | j /= 0 -> const' n (Int (i `quot` j))

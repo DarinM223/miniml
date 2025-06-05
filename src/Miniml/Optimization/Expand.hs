@@ -64,6 +64,7 @@ escape :: Value -> State ExpandInfo ()
 escape (Label v) = escape (Var v)
 escape (Var v) = at' v % _Just %= incEscapes
   where
+    incEscapes :: Info -> Info
     incEscapes = \case
       FunctionInfo i -> FunctionInfo $ i & #escapes %~ (+ 1)
       ArgumentInfo i -> ArgumentInfo $ i & #escapes %~ (+ 1)
@@ -87,6 +88,7 @@ enter v = modify' . IM.insert v
 gatherInfo :: Cexp -> ExpandInfo
 gatherInfo = flip execState IM.empty . go
   where
+    go :: Cexp -> State ExpandInfo ()
     go (Record vl w e) = do
       traverse_ (escape . fst) vl
       enter w $ RecordInfo (R 0 (length vl))
@@ -151,8 +153,10 @@ argumentSavings _ _ _ = 0
 rename :: IM.IntMap Value -> Cexp -> State Int Cexp
 rename = go
   where
+    look :: IM.IntMap Value -> Value -> Value
     look env v = foldrOf (var % to (env IM.!?) % _Just) const v v
 
+    go :: IM.IntMap Value -> Cexp -> State Int Cexp
     go env (Record vl w e) = do
       w' <- fresh
       Record (first (look env) <$> vl) w' <$> go (IM.insert w (Var w') env) e

@@ -17,8 +17,13 @@ import Optics ((%~), (&))
 convert :: IS.IntSet -> Iteration -> Cexp -> State Int Cexp
 convert esc (Iteration v c _) = go IM.empty
   where
+    rename :: IM.IntMap Var -> Value -> Value
     rename sub x = x & var %~ \x' -> IM.findWithDefault x' x' sub
+
+    noClosure :: IS.IntSet
     noClosure = IS.fromList (IM.keys v) \\ c
+
+    closureFreeVars :: IS.IntSet -> IS.IntSet
     closureFreeVars fs = IS.unions ((v IM.!) <$> IS.elems fs) \\ fs \\ noClosure
 
     go :: IM.IntMap Var -> Cexp -> State Int Cexp
@@ -64,6 +69,7 @@ convert esc (Iteration v c _) = go IM.empty
       where
         e' = e & shallowValues %~ rename sub
 
+    rewriteCall :: IM.IntMap Var -> Var -> [Value] -> State Int Cexp
     rewriteCall sub f vl
       -- Call escaping closure.
       | IS.member f esc = callClos (rename sub (Var f)) (rename sub <$> vl)
@@ -77,6 +83,8 @@ convert esc (Iteration v c _) = go IM.empty
            in pure $ App (Label f) (rename sub <$> (vl ++ fmap Var free'))
       -- Call continuation escaping closure.
       | otherwise = callClos (rename sub (Var f)) (rename sub <$> vl)
+
+    callClos :: Value -> [Value] -> State Int Cexp
     callClos f vl = (\w -> Select 0 f w (App (Var w) (f : vl))) <$> fresh
 
 header :: [Var] -> Maybe Int -> Var -> Cexp -> Cexp

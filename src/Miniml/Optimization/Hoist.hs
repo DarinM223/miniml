@@ -35,8 +35,10 @@ fixFreeVars fl (_, vl, e) = freeVars e IS.\\ IS.fromList (fl ++ vl)
 freeVars :: Cexp -> IS.IntSet
 freeVars = go IS.empty
   where
+    free :: IS.IntSet -> Value -> IS.IntSet
     free env = IS.fromList . toListOf (var % filtered (`IS.notMember` env))
 
+    go :: IS.IntSet -> Cexp -> IS.IntSet
     go env (Record vl w e) =
       IS.unions (go (IS.insert w env) e : fmap (free env . fst) vl)
     go env (Select _ v w e) = IS.union (free env v) (go (IS.insert w env) e)
@@ -74,6 +76,7 @@ hoist esc = stop . cata go
 
     -- Returns the free variables of the passed up Fixes,
     -- a list of the passed up Fixes, and the rest of the expression.
+    go :: CexpF (IS.IntSet, [(Var, [Var], Cexp)], Cexp) -> (IS.IntSet, [(Var, [Var], Cexp)], Cexp)
     go (RecordF vl w (_, fl, e)) = (IS.empty, [], Record vl w (fix fl e))
     go (SelectF i v w (m, fl, e))
       | IS.notMember w m = (m, fl, push (Select i v w) e)
@@ -111,6 +114,7 @@ hoist esc = stop . cata go
 pushDown :: Cexp -> Cexp -> Maybe Cexp
 pushDown = go
   where
+    go :: Cexp -> Cexp -> Maybe Cexp
     go _ (Record {}) = Nothing
     go e (Select i v w rest)
       | v `elem` (Var <$> bindings e) = Nothing
@@ -134,6 +138,7 @@ pushDown = go
       | otherwise = Primop op vl wl . (: []) <$> go e rest
     go e (Primop op vl wl el) = pushBranch e (Primop op vl wl) el
 
+    pushBranch :: Cexp -> ([Cexp] -> Cexp) -> [Cexp] -> Maybe Cexp
     pushBranch e0 mkE el
       | length (filter canPushDown ms) == 1 = Just (mkE el')
       | otherwise = Nothing
