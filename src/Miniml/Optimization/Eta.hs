@@ -36,6 +36,7 @@ reduce e0 = (clicks, e0')
         (go e0 >>= traverseOf (gplate @Value) rename)
         (EtaState IM.empty 0)
 
+    go :: Cexp -> State EtaState Cexp
     go (Fix fns body) = Fix <$> etaElim fns <*> go body
     go e = embed <$> traverse go (project e)
 

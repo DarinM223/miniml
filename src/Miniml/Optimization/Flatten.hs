@@ -83,6 +83,7 @@ field v _ = escape v
 fieldExistsAllBranches :: Var -> Int -> Cexp -> Bool
 fieldExistsAllBranches v j = go
   where
+    go :: Cexp -> Bool
     go (Record fields _ e) = any goField fields || go e
     go (Select i (Var v') _ _) | v == v' && i == j = True
     go (Fix _ e) = go e
@@ -90,6 +91,7 @@ fieldExistsAllBranches v j = go
       where
         e' = project e
 
+    goField :: (Value, Access) -> Bool
     goField (Var v', Selp i _) | v == v' && i == j = True
     goField _ = False
 
@@ -98,7 +100,8 @@ checkFlatten maxRegs (f, vl, body) = do
   usageInfo <- use #usageInfo
   case IM.lookup f usageInfo of
     Just (FunctionInfo (F arity _ esc)) -> do
-      let go (a : as) (v : vs) !headroom =
+      let go :: [Arity] -> [Int] -> Int -> [Arity]
+          go (a : as) (v : vs) !headroom =
             case (a, IM.lookup v usageInfo) of
               (Count c someNonRecord, Just (ArgumentInfo j))
                 | j > -1
@@ -120,6 +123,7 @@ checkFlatten maxRegs (f, vl, body) = do
         #clicks %= (+ 1)
     _ -> pure ()
   where
+    flattened :: Arity -> Bool
     flattened (Count _ _) = True
     flattened _ = False
 
@@ -128,6 +132,7 @@ gatherInfo maxRegs e0 = state $ \(!tmp) ->
   let GatherState !i !tmp' !clk = execState (go e0) (GatherState IM.empty tmp 0)
    in ((clk, i), tmp')
   where
+    go :: Cexp -> State GatherState ()
     go (Record vl w e) =
       enter w (RecordInfo (length vl)) >> traverse_ (uncurry field) vl >> go e
     go (Select i v _ e) = select v i >> go e
@@ -164,6 +169,7 @@ gatherInfo maxRegs e0 = state $ \(!tmp) ->
 reduce :: UsageInfo -> Cexp -> State Int Cexp
 reduce usage = go
   where
+    go :: Cexp -> State Int Cexp
     go (App (Var f) vs)
       | Just (FunctionInfo (F as (Just f') _)) <- IM.lookup f usage =
           runContT

@@ -77,6 +77,7 @@ enterSimple v = enter v NoSpecificInfo
 gatherInfo :: IS.IntSet -> Cexp -> ContractInfo
 gatherInfo irreducible = flip execState IM.empty . go
   where
+    go :: Cexp -> State ContractInfo ()
     go (Fix fns rest) = do
       for_ fns $ \(fn, params, e) -> do
         traverse_ enterSimple params
@@ -129,6 +130,7 @@ click = #clicks %= (+ 1)
 rename :: Value -> State ContractState Value
 rename = zoom #env . gets . flip go
   where
+    go :: IM.IntMap Value -> Value -> Value
     go env (Var v) | Just v' <- IM.lookup v env = go env v'
     go env (Label v) | Just v' <- IM.lookup v env = go env v'
     go _ v = v
@@ -151,6 +153,7 @@ reduce env0 info0 e0 =
           go e0 >>= traverseOf (gplate @Value) rename
    in (s ^. #clicks, e0')
   where
+    go :: Cexp -> State ContractState Cexp
     go (Select i v w e) =
       ifM
         (notM (used w))

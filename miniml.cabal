@@ -36,6 +36,7 @@ library
                     , Miniml.Spill
                     , Miniml.Semantics
                     , Miniml.Shared
+                    , Miniml.Machine
 
     -- Modules included in this library but not exported.
     -- other-modules:
