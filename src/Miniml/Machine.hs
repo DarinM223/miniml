@@ -5,13 +5,13 @@
 
 module Miniml.Machine (Condition (..), CMachine (..)) where
 
-import GHC.TypeLits (Nat)
+import GHC.TypeLits (KnownNat, Nat)
 import Miniml.Shared (Access)
 
 data Condition = Neq | Eql | Leq | Geq | Lss | Gtr
   deriving (Show, Eq, Ord)
 
-class CMachine target m | target -> m where
+class (KnownNat (N target), KnownNat (K target)) => CMachine target m | target -> m where
   -- | The number of general purpose registers.
   type N target :: Nat
 

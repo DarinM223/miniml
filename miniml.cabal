@@ -38,6 +38,7 @@ library
                     , Miniml.Semantics
                     , Miniml.Shared
                     , Miniml.Machine
+                    , Miniml.Codegen
 
     -- Modules included in this library but not exported.
     -- other-modules:

@@ -39,12 +39,14 @@ data Cexp
   | Select Int Value Var Cexp
   | Offset Int Value Var Cexp
   | App Value [Value]
-  | Fix [(Var, [Var], Cexp)] Cexp
+  | Fix [Function] Cexp
   | Switch Value [Cexp]
   | Primop Primop [Value] [Var] [Cexp]
   deriving (Show, Eq, Generic)
 
 instance Hashable Cexp
+
+type Function = (Var, [Var], Cexp)
 
 var :: Traversal' Value Var
 var = traversalVL $ \f e -> case e of
