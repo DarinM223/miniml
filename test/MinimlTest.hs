@@ -1,6 +1,7 @@
 import Closure.Convert qualified as Convert
 import Closure.Free qualified as Free
 import Closure.Lift qualified as Lift
+import Compiler qualified
 import CpsConvert qualified
 import Optimization.Contract qualified as Contract
 import Optimization.Cse qualified as Cse
@@ -30,5 +31,6 @@ tests =
       Free.tests,
       Convert.tests,
       Lift.tests,
-      Spill.tests
+      Spill.tests,
+      Compiler.tests
     ]

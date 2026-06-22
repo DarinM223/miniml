@@ -1,6 +1,7 @@
 module Miniml.Compiler (maxRegisters, compile) where
 
-import Control.Monad.State.Strict
+import Control.Monad.Identity (runIdentityT)
+import Control.Monad.State.Strict (State, lift, runState)
 import Data.IntMap.Strict qualified as IM
 import Data.IntSet qualified as IS
 import Miniml.Closure.Convert qualified as Closure
@@ -21,43 +22,43 @@ maxRegisters :: Int
 maxRegisters = 10
 
 compile :: Lam.Lexp -> (Cps.Var, Cps.Cexp)
-compile e = result
+compile _e = result
   where
-    (result, _c) = flip runState (-1) $ do
-      (k, e') <- Cps.convert e
-      e'' <- compileRound 0 e'
+    (result, _c) = flip runState (-1) $ runIdentityT $ do
+      (k, _e) <- lift $ Cps.convert _e
+      _e <- lift $ compileRound 0 _e
       let iter =
             Free.calcFreeVars
               10
-              (Free.fnsInSameFix e'')
-              (Free.fnsCalledInBody e'')
-              (Free.initIteration e'')
-      e''' <- Lift.lift <$> Closure.convert (Hoist.escaping e'') iter e''
-      let u = Hoist.freeVars e'''
-      e'''' <- Spill.f maxRegisters IS.empty u IS.empty IS.empty IS.empty e'''
-      pure (k, e'''')
+              (Free.fnsInSameFix _e)
+              (Free.fnsCalledInBody _e)
+              (Free.initIteration _e)
+      _e <- lift $ Lift.lift <$> Closure.convert (Hoist.escaping _e) iter _e
+      let u = Hoist.freeVars _e
+      _e <- lift $ Spill.f maxRegisters IS.empty u IS.empty IS.empty IS.empty _e
+      pure (k, _e)
 
 compileRound :: Int -> Cps.Cexp -> State Int Cps.Cexp
-compileRound r e0 = do
-  e' <- constantFolderPass e0
+compileRound r _e = runIdentityT $ do
+  _e <- lift $ constantFolderPass _e
   -- Then hoist, cse, and expand 1 round each.
-  let e'' = Hoist.hoist (Hoist.escaping e') e'
-  let (clicksCse, e''') = Cse.reduce e''
-  let info = Expand.gatherInfo e'''
-  (clicksExpand, e'''') <- Expand.expand r info e'''
+  _e <- pure $ Hoist.hoist (Hoist.escaping _e) _e
+  (clicksCse, _e) <- pure $ Cse.reduce _e
+  let info = Expand.gatherInfo _e
+  (clicksExpand, _e) <- lift $ Expand.expand r info _e
   if clicksCse + clicksExpand > 0
-    then compileRound (r + 1) e''''
-    else pure e''''
+    then lift $ compileRound (r + 1) _e
+    else pure _e
   where
     constantFolderPass :: Cps.Cexp -> State Int Cps.Cexp
-    constantFolderPass e = do
-      let info = Contract.gatherInfo IS.empty e
-          (clicksContract, e') = Contract.reduce IM.empty info e
-      (clicksFlatten, info') <- Flatten.gatherInfo maxRegisters e'
-      e'' <- Flatten.reduce info' e'
-      let (clicksEtaReduce, e''') = Eta.reduce e''
-      (clicksUncurry, e'''') <- Uncurry.reduce maxRegisters e'''
+    constantFolderPass _e = runIdentityT $ do
+      let info = Contract.gatherInfo IS.empty _e
+      (clicksContract, _e) <- pure $ Contract.reduce IM.empty info _e
+      (clicksFlatten, info') <- lift $ Flatten.gatherInfo maxRegisters _e
+      _e <- lift $ Flatten.reduce info' _e
+      (clicksEtaReduce, _e) <- pure $ Eta.reduce _e
+      (clicksUncurry, _e) <- lift $ Uncurry.reduce maxRegisters _e
       let totalClicks = clicksContract + clicksFlatten + clicksEtaReduce + clicksUncurry
       if totalClicks > 0
-        then constantFolderPass e''''
-        else pure e''''
+        then lift $ constantFolderPass _e
+        else pure _e

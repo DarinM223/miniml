@@ -99,6 +99,7 @@ test-suite miniml-test
                     , Closure.Lift
                     , Spill
                     , Semantic
+                    , Compiler
     build-depends:    base ^>=4.21
                     , miniml
                     , containers
